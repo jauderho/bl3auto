@@ -18,13 +18,13 @@ jobs:
     name: Build
     strategy:
       matrix:
-        platform: [ubuntu-20.04, windows-latest]
+        platform: [ubuntu-21.04, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-      - name: Set up Go 1.12
+      - name: Set up Go 1.16
         uses: actions/setup-go@v2.1.3
         with:
-          go-version: 1.15.6
+          go-version: 1.16.5
         id: go
 
       - name: Check out code into the Go module directory
