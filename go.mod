@@ -1,6 +1,6 @@
 module github.com/matt1484/bl3_auto_vip
 
-go 1.12
+go 1.16
 
 require (
 	github.com/PuerkitoBio/goquery v1.6.1
