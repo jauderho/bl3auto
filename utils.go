@@ -25,6 +25,5 @@ type Bl3Config struct {
 	SessionIdHeader     string            `json:"sessionIdHeader"`
 	RequestHeaders      map[string]string `json:"requestHeaders"`
 	SessionHeader       string            `json:"sessionHeader"`
-	Vip                 VipConfig         `json:"vipConfig"`
 	Shift               ShiftConfig       `json:"shiftConfig"`
 }

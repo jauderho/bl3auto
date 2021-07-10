@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## v2.2 - 2021-07-10
+### Changed
+* Removed all VIP code
+* Only support Shift codes going forward
+* Fixed broken login process
+
 ## v2.1.0 - 2019-09-18
 ### Added
 * GitHub website - https://matt1484.github.io/bl3_auto_vip/
