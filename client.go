@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"net/http"
+	. "net/http"
 	"net/http/cookiejar"
 
 	"github.com/PuerkitoBio/goquery"
