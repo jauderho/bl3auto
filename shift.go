@@ -7,10 +7,10 @@ import (
 )
 
 type ShiftConfig struct {
-	CodeListUrl string `json:"codeListUrl"`
-	CodeInfoUrl string `json:"codeInfoUrl"`
-	UserInfoUrl string `json:"userInfoUrl"`
-	GameCodename string `json:"gameCodename"`
+	CodeListUrl   string `json:"codeListUrl"`
+	CodeInfoUrl   string `json:"codeInfoUrl"`
+	UserInfoUrl   string `json:"userInfoUrl"`
+	GameCodename  string `json:"gameCodename"`
 	AllowInactive bool
 }
 
@@ -30,13 +30,13 @@ func (codeMap ShiftCodeMap) Contains(code, platform string) bool {
 }
 
 type shiftCode struct {
-	Game string `json:"offer_title"`
+	Game     string `json:"offer_title"`
 	Platform string `json:"offer_service"`
-	Active bool `json:"is_active"`
+	Active   bool   `json:"is_active"`
 }
 
 type shiftCodeFromList struct {
-	Code string `json:"code"`
+	Code     string `json:"code"`
 	Platform string `json:"platform"`
 }
 
@@ -69,14 +69,14 @@ func (client *Bl3Client) GetCodePlatforms(code string) ([]string, bool) {
 }
 
 func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
-	response, err := client.Post(client.Config.Shift.CodeInfoUrl + code + "/redeem/" + platform, "", nil)
+	response, err := client.Post(client.Config.Shift.CodeInfoUrl+code+"/redeem/"+platform, "", nil)
 	if err != nil {
 		return errors.New("failed to initialize code redemption.")
 	}
 
 	type redemptionJob struct {
 		JobId string `json:"job_id"`
-		Wait int `json:"max_wait_milliseconds"`
+		Wait  int    `json:"max_wait_milliseconds"`
 	}
 
 	resJson, err := response.BodyAsJson()
@@ -102,7 +102,7 @@ func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
 	if err != nil {
 		return errors.New("failed to initialize code redemption.")
 	}
-	
+
 	resJson, err = redeemResponse.BodyAsJson()
 	if err != nil {
 		return errors.New("bad code redemption response.")
@@ -118,7 +118,7 @@ func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
 	if !success {
 		return errors.New("failed to redeem shift code.")
 	}
-	
+
 	resJson.Out(&redemptionInfo)
 
 	return nil

@@ -36,22 +36,22 @@ func (v VipCodeMap) Add(codeType, code string) {
 
 type VipActivity struct {
 	Title string `json:"title"`
-	Link string `json:"link_href"`
+	Link  string `json:"link_href"`
 }
 
 type VipConfig struct {
-	CodeListUrl string `json:"codeListUrl"`
-	CodeListRowSelector string `json:"codeListRowSelector"`
-	CodeListInvalidRegex string `json:"codeListInvalidRegex"`
-	CodeListCheckIndex int `json:"codeListCheckIndex"`
-	CodeListCodeIndex int `json:"codeListCodeIndex"`
-	CodeListTypeIndex int `json:"codeListTypeIndex"`
-	CodeTypeUrlMap map[string]string  `json:"codeTypeUrlMap"`
+	CodeListUrl          string            `json:"codeListUrl"`
+	CodeListRowSelector  string            `json:"codeListRowSelector"`
+	CodeListInvalidRegex string            `json:"codeListInvalidRegex"`
+	CodeListCheckIndex   int               `json:"codeListCheckIndex"`
+	CodeListCodeIndex    int               `json:"codeListCodeIndex"`
+	CodeListTypeIndex    int               `json:"codeListTypeIndex"`
+	CodeTypeUrlMap       map[string]string `json:"codeTypeUrlMap"`
 }
 
 func (conf *VipConfig) GetCodeTypes() []string {
 	codeTypes := make([]string, 0)
-	for codeType, _ := range conf.CodeTypeUrlMap {
+	for codeType := range conf.CodeTypeUrlMap {
 		codeTypes = append(codeTypes, codeType)
 	}
 	return codeTypes
@@ -60,7 +60,7 @@ func (conf *VipConfig) GetCodeTypes() []string {
 func (conf *VipConfig) DetectCodeTypes(s string) []string {
 	l := strings.ToLower(s)
 	types := make([]string, 0)
-	for codeType, _ := range conf.CodeTypeUrlMap {
+	for codeType := range conf.CodeTypeUrlMap {
 		if strings.Contains(l, codeType) {
 			types = append(types, codeType)
 		}
@@ -70,7 +70,7 @@ func (conf *VipConfig) DetectCodeTypes(s string) []string {
 
 func (conf *Bl3Config) NewVipCodeMap() VipCodeMap {
 	codeTypeMap := make(map[string]StringSet)
-	for codeType, _ := range conf.Vip.CodeTypeUrlMap {
+	for codeType := range conf.Vip.CodeTypeUrlMap {
 		codeTypeMap[codeType] = StringSet{}
 	}
 	return codeTypeMap
@@ -95,8 +95,8 @@ func (client *Bl3Client) GetFullVipCodeMap() (VipCodeMap, error) {
 
 	codeHtml.Find(client.Config.Vip.CodeListRowSelector).Each(func(i int, row *goquery.Selection) {
 		numColumns := len(row.Find("td").Nodes)
-		if numColumns < client.Config.Vip.CodeListCheckIndex || 
-			numColumns < client.Config.Vip.CodeListCodeIndex || 
+		if numColumns < client.Config.Vip.CodeListCheckIndex ||
+			numColumns < client.Config.Vip.CodeListCodeIndex ||
 			numColumns < client.Config.Vip.CodeListTypeIndex {
 			return
 		}
@@ -105,8 +105,8 @@ func (client *Bl3Client) GetFullVipCodeMap() (VipCodeMap, error) {
 		code := ""
 
 		row.Find("td").EachWithBreak(func(i int, col *goquery.Selection) bool {
-			if i == client.Config.Vip.CodeListCheckIndex && 
-			    strings.Contains(strings.ToLower(col.Text()), client.Config.Vip.CodeListInvalidRegex) {
+			if i == client.Config.Vip.CodeListCheckIndex &&
+				strings.Contains(strings.ToLower(col.Text()), client.Config.Vip.CodeListInvalidRegex) {
 				return false
 			}
 			if i == client.Config.Vip.CodeListCodeIndex {
@@ -231,7 +231,7 @@ func (client *Bl3Client) GenerateVipCodeUrlMap() (map[string]string, error) {
 			codeTypeUrlMap[codeType] = "https://2kgames.crowdtwist.com/code-redemption-campaign/redeem?cid=" + strconv.Itoa(int(campaignId))
 		}
 	}
-	
+
 	return codeTypeUrlMap, nil
 }
 
@@ -241,7 +241,7 @@ func (client *Bl3Client) GetVipActivities() ([]VipActivity, error) {
 	if widgetConf == nil {
 		return activities, errors.New("failed to get activity names")
 	}
-	
+
 	type activity struct {
 		Name string `json:"name"`
 	}
@@ -291,7 +291,7 @@ func (client *Bl3Client) RedeemVipActivity(activity VipActivity) bool {
 }
 
 func (client *Bl3Client) RedeemVipCode(codeType, code string) (string, bool) {
-	res, err := client.PostJson(client.Config.Vip.CodeTypeUrlMap[codeType], map[string]string {
+	res, err := client.PostJson(client.Config.Vip.CodeTypeUrlMap[codeType], map[string]string{
 		"code": code,
 	})
 	if err != nil {

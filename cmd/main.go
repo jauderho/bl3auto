@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shibukawa/configdir"
 	bl3 "github.com/matt1484/bl3_auto_vip"
+	"github.com/shibukawa/configdir"
 )
 
 // gross but effective for now
@@ -37,7 +37,7 @@ func exit() {
 }
 
 func doVip(client *bl3.Bl3Client) {
-	fmt.Print("Getting available VIP activities (excluding codes) . . . . . ");
+	fmt.Print("Getting available VIP activities (excluding codes) . . . . . ")
 	activities, err := client.GetVipActivities()
 	if err != nil {
 		fmt.Println(err)
@@ -59,7 +59,6 @@ func doVip(client *bl3.Bl3Client) {
 	if !foundActivities {
 		fmt.Println("No new VIP activities at this time. Try again later.")
 	}
-	
 
 	configDirs := configdir.New("bl3-auto-vip", "bl3-auto-vip")
 	configFilename := usernameHash + "-vip-codes.json"
@@ -122,7 +121,7 @@ func doVip(client *bl3.Bl3Client) {
 			fmt.Println(res)
 		}
 	}
-	
+
 	if !foundCodes {
 		fmt.Println("No new VIP codes at this time. Try again later.")
 	} else {
@@ -227,7 +226,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 			folders[0].WriteFile(configFilename, data)
 		}
 	}
-	
+
 }
 
 func main() {
@@ -257,7 +256,7 @@ func main() {
 	}
 
 	hasher := md5.New()
-    hasher.Write([]byte(username))
+	hasher.Write([]byte(username))
 	usernameHash = hex.EncodeToString(hasher.Sum(nil))
 
 	fmt.Print("Setting up . . . . . ")

@@ -143,9 +143,9 @@ func NewBl3Client() (*Bl3Client, error) {
 		client.SetDefaultHeader(header, value)
 	}
 
-	return &Bl3Client {
+	return &Bl3Client{
 		HttpClient: *client,
-		Config: config,
+		Config:     config,
 	}, nil
 }
 
