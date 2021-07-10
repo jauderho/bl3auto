@@ -166,7 +166,7 @@ func (client *Bl3Client) Login(username string, password string) error {
 	}
 
 	if loginRes.Header.Get(client.Config.LoginRedirectHeader) == "" {
-		fmt.Println(loginRes.Header.Get(client.Config.LoginRedirectHeader))
+		return errors.New(loginRes.Header.Get(client.Config.LoginRedirectHeader))
 		return errors.New("Failed to start session")
 	}
 
