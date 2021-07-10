@@ -1,12 +1,12 @@
 {
-    "version": "2.1",
+    "version": "2.2",
     "loginUrl": "https://api.2k.com/borderlands/users/authenticate",
     "loginRedirectHeader": "X-CT-REDIRECT",
     "sessionIdHeader": "X-SESSION-SET",
     "sessionHeader": "X-SESSION",
     "requestHeaders": {
         "Origin": "https://borderlands.com",
-        "Referer": "https://borderlands.com/en-US/vip/"
+        "Referer": "https://borderlands.com/en-US/"
     },
     "vipConfig": {
         "codeListUrl": "https://www.reddit.com/r/borderlands3/comments/bxgq5p/borderlands_vip_program_codes/",

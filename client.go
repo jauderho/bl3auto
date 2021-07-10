@@ -127,7 +127,7 @@ func NewBl3Client() (*Bl3Client, error) {
 		return nil, errors.New("Failed to start client")
 	}
 
-	res, err := client.Get("https://raw.githubusercontent.com/matt1484/bl3_auto_vip/master/config.json")
+	res, err := client.Get("https://raw.githubusercontent.com/jauderho/bl3_auto_vip/removevip/config.json")
 	if err != nil {
 		return nil, errors.New("Failed to get config")
 	}
@@ -165,7 +165,7 @@ func (client *Bl3Client) Login(username string, password string) error {
 		return errors.New("Failed to login")
 	}
 
-	if loginRes.Header.Get(client.Config.LoginRedirectHeader) == "" {
+	/* if loginRes.Header.Get(client.Config.LoginRedirectHeader) == "" {
 		return errors.New("Failed to start session")
 	}
 
@@ -173,7 +173,7 @@ func (client *Bl3Client) Login(username string, password string) error {
 	if err != nil {
 		return errors.New("Failed to get session")
 	}
-	defer sessionRes.Body.Close()
+	defer sessionRes.Body.Close()*/
 
 	client.SetDefaultHeader(client.Config.SessionHeader, loginRes.Header.Get(client.Config.SessionIdHeader))
 	return nil

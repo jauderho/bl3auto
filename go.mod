@@ -1,4 +1,4 @@
-module github.com/matt1484/bl3_auto_vip
+module github.com/jauderho/bl3_auto_vip
 
 go 1.16
 

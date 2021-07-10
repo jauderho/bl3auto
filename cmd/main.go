@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	bl3 "github.com/matt1484/bl3_auto_vip"
+	bl3 "github.com/jauderho/bl3_auto_vip"
 	"github.com/shibukawa/configdir"
 )
 
 // gross but effective for now
-const version = "2.1"
+const version = "2.2"
 
 var usernameHash string
 
@@ -284,9 +284,9 @@ func main() {
 
 	doShift(client, singleShiftCode)
 
-	if singleShiftCode == "" {
-		doVip(client)
-	}
+	//if singleShiftCode == "" {
+	//	doVip(client)
+	//}
 
 	exit()
 }
