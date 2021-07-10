@@ -165,17 +165,15 @@ func (client *Bl3Client) Login(username string, password string) error {
 		return errors.New("Failed to login")
 	}
 
-	err := loginRes.Header.Get(client.Config.LoginRedirectHeader)
-	if loginRes.Header.Get(client.Config.LoginRedirectHeader) == "" {
-		return errors.New(err)
-		//return errors.New("Failed to start session")
+	/* if loginRes.Header.Get(client.Config.LoginRedirectHeader) == "" {
+		return errors.New("Failed to start session")
 	}
 
 	sessionRes, err := client.Get(loginRes.Header.Get(client.Config.LoginRedirectHeader))
 	if err != nil {
 		return errors.New("Failed to get session")
 	}
-	defer sessionRes.Body.Close()
+	defer sessionRes.Body.Close()*/
 
 	client.SetDefaultHeader(client.Config.SessionHeader, loginRes.Header.Get(client.Config.SessionIdHeader))
 	return nil
