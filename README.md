@@ -37,7 +37,7 @@ To run from source:
 5. Run `docker run -it -v codes:/root/.config/bl3auto/bl3auto bl3auto`
     + The mounted volume will keep track of existing codes that have been used already
 
-#### Docker Compose
+#### Docker Compose (preferred)
 To run from source:
 1. Install docker and docker-compose
 2. Download project
@@ -46,7 +46,8 @@ To run from source:
     + Add `BL3_EMAIL="me@myemail.com" and BL3_PASSWORD="mypassword"`
     + Replace `"me@myemail.com"` with your login email address
     + Replace `"mypassword"` with your login password
-5. Run `docker-compose up`
+5. Create "codes" subdirectory (optional)
+6. Run `docker-compose up`
 
 
 #### Using the prebuilt releases
