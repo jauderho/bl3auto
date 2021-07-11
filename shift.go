@@ -116,7 +116,7 @@ func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
 		return errors.New(strings.ToLower(strings.Join(strings.Split(errs[0], "_"), " ")) + ".")
 	}
 	if !success {
-		return errors.New("failed to redeem shift code.")
+		return errors.New("failed to redeem SHiFT code.")
 	}
 
 	resJson.Out(&redemptionInfo)
@@ -155,12 +155,12 @@ func (client *Bl3Client) GetFullShiftCodeList() (ShiftCodeMap, error) {
 
 	res, err := httpClient.Get(client.Config.Shift.CodeListUrl)
 	if err != nil {
-		return codeMap, errors.New("Failed to get SHIFT code list")
+		return codeMap, errors.New("Failed to get SHiFT code list")
 	}
 
 	json, err := res.BodyAsJson()
 	if err != nil {
-		return codeMap, errors.New("Failed to get SHIFT code list body as JSON")
+		return codeMap, errors.New("Failed to get SHiFT code list body as JSON")
 	}
 
 	codes := make([]shiftCodeFromList, 0)

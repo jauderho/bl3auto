@@ -1,15 +1,15 @@
 # FORK
 
-This was forked from matt1484's repo as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem Shift codes going forward.
+This was forked from matt1484's repo as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem SHiFT codes going forward.
 
-# BL3 Auto Shift
+# BL3 Auto SHiFT
 
-Cross platform Go app for automatically redeeming Shift codes
+Cross platform Go app for automatically redeeming SHiFT codes
 for Borderlands 3.
 
 ## Getting Started
 
-1. Make a Shift account at https://borderlands.com/
+1. Make a SHiFT account at https://borderlands.com/
 2. Download program from above link
 3. Unzip the folder
 4. Run it, you will be prompted for username and password
@@ -29,16 +29,16 @@ go get -u github.com/jauderho/bl3_auto_vip
 
 #### Docker
 To run from source:
-1. install docker
-2. download project
-3. navigate to project
-4. run `docker build -t bl3 .`
-5. run `docker run -it -v auto_bl3_vip:/root/.config/bl3-auto-vip bl3`
+1. Install docker
+2. Download project
+3. Navigate to project
+4. Run `docker build -t bl3auto .`
+5. Run `docker run -it -v auto_bl3_vip:/root/.config/bl3-auto-vip bl3auto`
     + The mounted volume will keep track of existing codes that have been used already
 
 #### Docker Compose
 To run from source:
-1. Installer docker and docker-compose
+1. Install docker and docker-compose
 2. Download project
 3. Navigate to project
 4. Run `BL3_EMAIL="me@myemail.com" BL3_PASSWORD="mypassword" docker-compose up`

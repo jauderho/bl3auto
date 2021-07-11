@@ -8,7 +8,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## v2.2 - 2021-07-10
 ### Changed
 * Removed all VIP code
-* Only support Shift codes going forward
+* Only support SHiFT codes going forward
 * Fixed broken login process
 
 ## v2.1.0 - 2019-09-18
@@ -17,7 +17,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * Go modules ([#1])
 * GitHub Actions CI pipeline ([#6])
 * Change log
-* Shift code support ([#9])
+* SHiFT code support ([#9])
 * Ability to redeem activities ([#10])
 * Config for future/updates
 
