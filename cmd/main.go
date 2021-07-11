@@ -10,10 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
-
-	"golang.org/x/term"
 
 	bl3 "github.com/jauderho/bl3auto"
 	"github.com/shibukawa/configdir"
@@ -148,7 +145,7 @@ func main() {
 	flag.BoolVar(&allowInactive, "allow-inactive", false, "Attempt to redeem SHIFT codes even if they are inactive?")
 	flag.Parse()
 
-	/*if username == "" {
+	if username == "" {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter username (email): ")
 		bytes, _, _ := reader.ReadLine()
@@ -159,25 +156,6 @@ func main() {
 		fmt.Print("Enter password        : ")
 		bytes, _, _ := reader.ReadLine()
 		password = string(bytes)
-	}*/
-
-	if username == "" {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Enter username (email): ")
-		username, err := reader.ReadString('\n')
-		if err != nil {
-			printError(err)
-			return
-		}
-	}
-	if password == "" {
-		fmt.Print("Enter password        : ")
-		bytePassword, err := term.ReadPassword(int(syscall.Stdin))
-		if err != nil {
-			printError(err)
-			return
-		}
-		password := string(bytePassword)
 	}
 
 	hasher := md5.New()
