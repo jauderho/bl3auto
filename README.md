@@ -33,7 +33,7 @@ To run from source:
 2. Download project
 3. Navigate to project
 4. Run `docker build -t bl3auto .`
-5. Run `docker run -it -v auto_bl3_vip:/root/.config/bl3-auto-vip bl3auto`
+5. Run `docker run -it -v auto_bl3_vip:/root/.config/bl3auto bl3auto`
     + The mounted volume will keep track of existing codes that have been used already
 
 #### Docker Compose
@@ -47,7 +47,7 @@ To run from source:
 
 #### Using the prebuilt releases
 The binaries/executables are released
-[here](https://github.com/matt1484/bl3_auto_vip/releases)
+[here](https://github.com/jauderho/bl3auto/releases)
 
 ## FAQs
 

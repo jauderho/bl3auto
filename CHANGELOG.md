@@ -10,6 +10,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * Removed all VIP code
 * Only support SHiFT codes going forward
 * Fixed broken login process
+* Normalized to consistent naming of bl3auto
 
 ## v2.1.0 - 2019-09-18
 ### Added

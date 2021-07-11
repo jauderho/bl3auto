@@ -1,4 +1,4 @@
-module github.com/jauderho/bl3_auto_vip
+module github.com/jauderho/bl3auto
 
 go 1.16
 

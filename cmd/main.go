@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	bl3 "github.com/jauderho/bl3_auto_vip"
+	bl3 "github.com/jauderho/bl3auto"
 	"github.com/shibukawa/configdir"
 )
 
