@@ -1,11 +1,15 @@
-# BL3 Auto VIP + Shift
+# FORK
 
-Cross platform Go app for automatically redeeming VIP/Shift codes
-for Borderlands 3. Also redeems VIP activities such as weekly twitter/facebook points.
+This was forked from matt1484's repo as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem Shift codes going forward.
+
+# BL3 Auto Shift
+
+Cross platform Go app for automatically redeeming Shift codes
+for Borderlands 3.
 
 ## Getting Started
 
-1. Make a VIP account at https://borderlands.com/en-US/vip/
+1. Make a Shift account at https://borderlands.com/
 2. Download program from above link
 3. Unzip the folder
 4. Run it, you will be prompted for username and password
@@ -20,7 +24,7 @@ Run it with `--help` to view command line args that are supported.
 
 #### Using go
 ```sh
-go get -u github.com/matt1484/bl3_auto_vip
+go get -u github.com/jauderho/bl3_auto_vip
 ```
 
 #### Docker
@@ -57,7 +61,7 @@ macOS Catalina may refuse to run the app because it is "from an unidentified dev
 To get around this, right click on the app in Finder, and while holding the `⌥ Option` key,
 click `Open` in the menu. You will be prompted with a message similar to this:
 
->macOS cannot verify the developer of "bl3-auto-vip". Are you sure you want to open it?
+>macOS cannot verify the developer of "bl3-auto". Are you sure you want to open it?
 
 Click the `Open` button and the app will run in your terminal. From that point forward
 you will be able to run the app directly or from your terminal without any issues.

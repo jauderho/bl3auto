@@ -36,103 +36,6 @@ func exit() {
 	fmt.Println("")
 }
 
-func doVip(client *bl3.Bl3Client) {
-	fmt.Print("Getting available VIP activities (excluding codes) . . . . . ")
-	activities, err := client.GetVipActivities()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println("success!")
-	foundActivities := false
-	for _, activity := range activities {
-		if !strings.Contains(strings.ToLower(activity.Title), "watch") && !strings.Contains(strings.ToLower(activity.Link), "video") {
-			foundActivities = true
-			fmt.Print("Trying VIP activity '" + activity.Title + "' . . . . . ")
-			if client.RedeemVipActivity(activity) {
-				fmt.Println("success!")
-			} else {
-				fmt.Println("failed!")
-			}
-		}
-	}
-	if !foundActivities {
-		fmt.Println("No new VIP activities at this time. Try again later.")
-	}
-
-	configDirs := configdir.New("bl3-auto-vip", "bl3-auto-vip")
-	configFilename := usernameHash + "-vip-codes.json"
-	redeemedCodesCached := bl3.VipCodeMap{}
-
-	fmt.Print("Getting previously redeemed VIP codes . . . . . ")
-	folder := configDirs.QueryFolderContainsFile(configFilename)
-	if folder != nil {
-		data, err := folder.ReadFile(configFilename)
-		if err == nil {
-			json := bl3.JsonFromBytes(data)
-			if json != nil {
-				json.Out(&redeemedCodesCached)
-			}
-		}
-	}
-	redeemedCodes, err := client.GetRedeemedVipCodeMap()
-	if err != nil {
-		printError(err)
-		return
-	}
-	for codeType, codes := range redeemedCodesCached {
-		for code := range codes {
-			redeemedCodes.Add(codeType, code)
-		}
-	}
-	fmt.Println("success!")
-
-	fmt.Print("Getting new VIP codes . . . . . ")
-	allCodes, err := client.GetFullVipCodeMap()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println("success!")
-
-	newCodes := allCodes.Diff(redeemedCodes)
-	foundCodes := false
-	for codeType, codes := range newCodes {
-		if len(codes) < 1 {
-			continue
-		}
-		foundCodes = true
-		fmt.Print("Setting up VIP codes of type '" + codeType + "' . . . . . ")
-		_, found := client.Config.Vip.CodeTypeUrlMap[codeType]
-		if !found {
-			fmt.Println("invalid! Moving on.")
-			continue
-		}
-		fmt.Println("success!")
-
-		for code := range codes {
-			fmt.Print("Trying '" + codeType + "' VIP code '" + code + "' . . . . . ")
-			res, valid := client.RedeemVipCode(codeType, code)
-			if !valid {
-				fmt.Println("failed! Moving on.")
-				continue
-			}
-			redeemedCodes.Add(codeType, code)
-			fmt.Println(res)
-		}
-	}
-
-	if !foundCodes {
-		fmt.Println("No new VIP codes at this time. Try again later.")
-	} else {
-		folders := configDirs.QueryFolders(configdir.Global)
-		data, err := json.Marshal(&redeemedCodes)
-		if err == nil {
-			folders[0].WriteFile(configFilename, data)
-		}
-	}
-}
-
 func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 	fmt.Print("Getting SHIFT platforms . . . . . ")
 	platforms, err := client.GetShiftPlatforms()
@@ -283,10 +186,6 @@ func main() {
 	fmt.Println("success!")
 
 	doShift(client, singleShiftCode)
-
-	//if singleShiftCode == "" {
-	//	doVip(client)
-	//}
 
 	exit()
 }
