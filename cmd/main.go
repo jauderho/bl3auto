@@ -2,7 +2,8 @@ package main
 
 import (
 	"bufio"
-	"crypto/md5"
+	//"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -158,9 +159,15 @@ func main() {
 		password = string(bytes)
 	}
 
-	hasher := md5.New()
+	// MD5 Hash
+	/*hasher := md5.New()
 	hasher.Write([]byte(username))
-	usernameHash = hex.EncodeToString(hasher.Sum(nil))
+	usernameHash = hex.EncodeToString(hasher.Sum(nil))*/
+
+	// SHA256 Hash
+	hasher := sha256.New()
+	hasher.Write([]byte(username))
+	usernameHash = hex.EncodeToString(hasher.Sum256(nil))
 
 	fmt.Print("Setting up . . . . . ")
 	client, err := bl3.NewBl3Client()
