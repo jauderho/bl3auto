@@ -159,7 +159,11 @@ func main() {
 	}
 
 	hasher := md5.New()
-	hasher.Write([]byte(username))
+	err = hasher.Write([]byte(username))
+	if err != nil {
+		printError(err)
+		return
+	}
 	usernameHash = hex.EncodeToString(hasher.Sum(nil))
 
 	fmt.Print("Setting up . . . . . ")
