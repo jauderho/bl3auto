@@ -1,4 +1,4 @@
-package bl3-auto=vip
+package bl3-auto
 
 import (
 	"github.com/thedevsaddam/gojsonq"
