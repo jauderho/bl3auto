@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	bl3 "github.com/jauderho/bl3auto"
 	"github.com/shibukawa/configdir"
 )
@@ -151,11 +153,19 @@ func main() {
 		bytes, _, _ := reader.ReadLine()
 		username = string(bytes)
 	}
-	if password == "" {
+	/*if password == "" {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter password        : ")
 		bytes, _, _ := reader.ReadLine()
 		password = string(bytes)
+	}*/
+	if password == "" {
+		fmt.Print("Enter password        : ")
+		bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+		if err != nil {
+			return "", "", err
+		}
+		password := string(bytePassword)
 	}
 
 	hasher := md5.New()
