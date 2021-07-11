@@ -1,15 +1,15 @@
 # FORK
 
-This was forked from matt1484's repo as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem Shift codes going forward.
+This was forked from matt1484's repo as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem SHiFT codes going forward.
 
-# BL3 Auto Shift
+# BL3 Auto SHiFT
 
-Cross platform Go app for automatically redeeming Shift codes
+Cross platform Go app for automatically redeeming SHiFT codes
 for Borderlands 3.
 
 ## Getting Started
 
-1. Make a Shift account at https://borderlands.com/
+1. Make a SHiFT account at https://borderlands.com/
 2. Download program from above link
 3. Unzip the folder
 4. Run it, you will be prompted for username and password
