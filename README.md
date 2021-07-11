@@ -32,7 +32,7 @@ To run from source:
 2. Download project
 3. Navigate to project
 4. Run `docker build -t bl3auto .`
-5. Run `docker run -it -v auto_bl3_vip:/root/.config/bl3auto bl3auto`
+5. Run `docker run -it -v codes:/root/.config/bl3auto/bl3auto bl3auto`
     + The mounted volume will keep track of existing codes that have been used already
 
 #### Docker Compose

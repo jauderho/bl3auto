@@ -174,7 +174,7 @@ func main() {
 	fmt.Println("success!")
 
 	if client.Config.Version != version {
-		fmt.Println("Your version (" + version + ") is out of date. Please consider downloading the latest version (" + client.Config.Version + ") at https://github.com/matt1484/bl3_auto_vip/releases/latest")
+		fmt.Println("Your version (" + version + ") is out of date. Please consider downloading the latest version (" + client.Config.Version + ") at https://github.com/jauderho/bl3auto/releases/latest")
 	}
 
 	fmt.Print("Logging in as '" + username + "' . . . . . ")
