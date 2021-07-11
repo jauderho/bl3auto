@@ -24,7 +24,7 @@ Run it with `--help` to view command line args that are supported.
 
 #### Using go
 ```sh
-go get -u github.com/jauderho/bl3_auto_vip
+go get -u github.com/jauderho/bl3auto
 ```
 
 #### Docker
