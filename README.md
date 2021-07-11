@@ -42,9 +42,12 @@ To run from source:
 1. Install docker and docker-compose
 2. Download project
 3. Navigate to project
-4. Run `BL3_EMAIL="me@myemail.com" BL3_PASSWORD="mypassword" docker-compose up`
+4. Create .env and put the following in the file
+    + Add `BL3_EMAIL="me@myemail.com" and BL3_PASSWORD="mypassword"`
     + Replace `"me@myemail.com"` with your login email address
     + Replace `"mypassword"` with your login password
+5. Run `docker-compose up`
+
 
 #### Using the prebuilt releases
 The binaries/executables are released
