@@ -1,5 +1,7 @@
 # FORKED : BL3 Auto SHiFT
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/jauderho/bl3auto)](https://goreportcard.com/report/github.com/jauderho/bl3auto)
+
 Cross platform Go app for automatically redeeming SHiFT codes
 for Borderlands 3.
 
