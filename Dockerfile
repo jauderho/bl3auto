@@ -8,4 +8,5 @@ ENV GO111MODULE=on
 RUN apk update && apk add git
 RUN go mod download && go mod verify
 
-CMD go run cmd/main.go
+#CMD go run cmd/main.go
+CMD go run -v -ldflags="-s -w" cmd/main.go
