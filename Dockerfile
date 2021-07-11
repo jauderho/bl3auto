@@ -1,4 +1,4 @@
-FROM golang:1.16.5-alpine3.14 as build
+FROM golang:alpine as build
 
 COPY . /go/src/github.com/jauderho/bl3auto
 WORKDIR /go/src/github.com/jauderho/bl3auto
