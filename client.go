@@ -127,7 +127,7 @@ func NewBl3Client() (*Bl3Client, error) {
 		return nil, errors.New("Failed to start client")
 	}
 
-	res, err := client.Get("https://raw.githubusercontent.com/jauderho/bl3_auto_vip/main/config.json")
+	res, err := client.Get("https://raw.githubusercontent.com/jauderho/bl3auto/main/config.json")
 	if err != nil {
 		return nil, errors.New("Failed to get config")
 	}
