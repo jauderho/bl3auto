@@ -1,4 +1,4 @@
-package bl3-auto
+package bl3auto
 
 import (
 	"github.com/thedevsaddam/gojsonq"
