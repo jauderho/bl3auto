@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	. "net/http"
+	"net/http"
 	"net/http/cookiejar"
 
 	"github.com/PuerkitoBio/goquery"
@@ -14,12 +14,12 @@ import (
 )
 
 type HttpClient struct {
-	Client
-	headers Header
+	http.Client
+	headers http.Header
 }
 
 type HttpResponse struct {
-	Response
+	http.Response
 }
 
 func NewHttpClient() (*HttpClient, error) {
@@ -29,11 +29,11 @@ func NewHttpClient() (*HttpClient, error) {
 	}
 
 	return &HttpClient{
-		Client{
+		http.Client{
 			Jar: jar,
 		},
-		Header{
-			"User-Agent": []string{"BL3 Auto Shift"},
+		http.Header{
+			"User-Agent": []string{"BL3 Auto SHiFT"},
 		},
 	}, nil
 }
@@ -64,7 +64,7 @@ func (response *HttpResponse) BodyAsJson() (*gojsonq.JSONQ, error) {
 	return JsonFromBytes(bodyBytes), nil
 }
 
-func getResponse(res *Response, err error) (*HttpResponse, error) {
+func getResponse(res *http.Response, err error) (*HttpResponse, error) {
 	return &HttpResponse{
 		*res,
 	}, err
@@ -74,7 +74,7 @@ func (client *HttpClient) SetDefaultHeader(k, v string) {
 	client.headers.Set(k, v)
 }
 
-func (client *HttpClient) Do(req *Request) (*HttpResponse, error) {
+func (client *HttpClient) Do(req *http.Request) (*HttpResponse, error) {
 	for k, v := range client.headers {
 		for _, x := range v {
 			req.Header.Set(k, x)
@@ -84,7 +84,7 @@ func (client *HttpClient) Do(req *Request) (*HttpResponse, error) {
 }
 
 func (client *HttpClient) Get(url string) (*HttpResponse, error) {
-	req, err := NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (client *HttpClient) Get(url string) (*HttpResponse, error) {
 }
 
 func (client *HttpClient) Head(url string) (*HttpResponse, error) {
-	req, err := NewRequest("HEAD", url, nil)
+	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (client *HttpClient) Head(url string) (*HttpResponse, error) {
 }
 
 func (client *HttpClient) Post(url, contentType string, body io.Reader) (*HttpResponse, error) {
-	req, err := NewRequest("POST", url, body)
+	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err
 	}
