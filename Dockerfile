@@ -9,4 +9,7 @@ RUN apk update && apk add git
 RUN go mod download && go mod verify
 
 #CMD go run cmd/main.go
-CMD go run -v -ldflags="-s -w" cmd/main.go
+#CMD go run -v -ldflags="-s -w" cmd/main.go
+
+RUN go build -v -ldflags="-s -w" cmd/bl3auto.go
+CMD ./bl3auto
