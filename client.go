@@ -1,4 +1,4 @@
-package bl3_auto_vip
+package bl3-auto
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ func NewHttpClient() (*HttpClient, error) {
 			Jar: jar,
 		},
 		Header{
-			"User-Agent": []string{"BL3 Auto Vip"},
+			"User-Agent": []string{"BL3 Auto Shift"},
 		},
 	}, nil
 }

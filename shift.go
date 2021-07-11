@@ -1,4 +1,4 @@
-package bl3_auto_vip
+package bl3-auto-vip
 
 import (
 	"errors"
