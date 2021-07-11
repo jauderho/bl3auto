@@ -45,7 +45,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 	}
 	fmt.Println("success!")
 
-	configDirs := configdir.New("bl3-auto-vip", "bl3-auto-vip")
+	configDirs := configdir.New("bl3auto", "bl3auto")
 	configFilename := usernameHash + "-shift-codes.json"
 	redeemedCodes := bl3.ShiftCodeMap{}
 
