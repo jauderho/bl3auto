@@ -1,5 +1,12 @@
 name: Go
-on: [push, pull_request]
+on: 
+  push:
+    branches:
+      - master
+    tags:
+      - v*
+  pull_request:
+  
 jobs:
   lint:
     name: Lint
@@ -30,11 +37,25 @@ jobs:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2.3.4
 
-      - name: Get dependencies
-        run: go get -v -t -d ./...
+      # https://github.com/marketplace/actions/cache
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Check and get dependencies
+        run: |
+          go mod download
+          go mod tidy
+          git diff --exit-code go.mod
+          git diff --exit-code go.sum
 
       - name: Build
         run: go build -v .
 
       - name: Test
         run: go test -v -race ./...
+       
