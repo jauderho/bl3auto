@@ -11,6 +11,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * Only support SHiFT codes going forward
 * Fixed broken login process
 * Normalized to consistent naming of bl3auto
+* Try to redeem all SHiFT codes instead of just Borderlands 3
 
 ## v2.1.0 - 2019-09-18
 ### Added
