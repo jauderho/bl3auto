@@ -1,7 +1,9 @@
 
 services:
   bl3auto:
-    build: .
+    #build: .
+    container_name: bl3auto
+    image: jauderho/bl3auto:latest
     command: ["bl3auto", "-e", "${BL3_EMAIL}", "-p", "${BL3_PASSWORD}"]
     volumes:
       - './codes:/root/.config/bl3auto/bl3auto'
