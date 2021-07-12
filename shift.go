@@ -56,9 +56,9 @@ func (client *Bl3Client) GetCodePlatforms(code string) ([]string, bool) {
 	codes := make([]shiftCode, 0)
 	json.From("entitlement_offer_codes").Select("offer_service", "is_active", "offer_title").Out(&codes)
 	for _, code := range codes {
-		if (code.Active || client.Config.Shift.AllowInactive) && code.Game == client.Config.Shift.GameCodename {
+		//if (code.Active || client.Config.Shift.AllowInactive) && code.Game == client.Config.Shift.GameCodename {
 			platforms = append(platforms, code.Platform)
-		}
+		//}
 	}
 
 	if len(platforms) == 0 {
