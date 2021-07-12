@@ -55,7 +55,7 @@ jobs:
           git diff --exit-code go.sum
 
       - name: Build
-        run: go build -v .
+        run: go build -v -ldflags="-s -w" .
 
       - name: Test
         run: go test -v -race ./...
