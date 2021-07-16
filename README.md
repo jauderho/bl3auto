@@ -66,7 +66,7 @@ macOS Catalina may refuse to run the app because it is "from an unidentified dev
 To get around this, right click on the app in Finder, and while holding the `⌥ Option` key,
 click `Open` in the menu. You will be prompted with a message similar to this:
 
->macOS cannot verify the developer of "bl3-auto". Are you sure you want to open it?
+>macOS cannot verify the developer of "bl3auto". Are you sure you want to open it?
 
 Click the `Open` button and the app will run in your terminal. From that point forward
 you will be able to run the app directly or from your terminal without any issues.
