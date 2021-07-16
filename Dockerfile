@@ -34,4 +34,4 @@ COPY --from=build /go/src/github.com/jauderho/bl3auto/bl3auto /usr/local/bin/
 
 #ENTRYPOINT ["/usr/local/bin/bl3auto"]
 
-CMD bl3auto
+CMD ["bl3auto"]
