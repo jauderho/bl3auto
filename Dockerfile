@@ -21,7 +21,7 @@ RUN ls -lh /go/src/github.com/jauderho/bl3auto/bl3auto
 # ----------------------------------------------------------------------------
 
 #FROM scratch
-FROM alpine:3.14.0
+FROM alpine:3.14
 
 LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
 LABEL org.opencontainers.image.url="https://github.com/jauderho/bl3auto"
