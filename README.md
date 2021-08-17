@@ -4,7 +4,7 @@
 [![GitHub Super-Linter](https://github.com/jauderho/bl3auto/workflows/Lint%20Code%20Base/badge.svg)](https://github.com/jauderho/bl3auto/actions/workflows/linter.yml)
 
 Cross platform Go app for automatically redeeming SHiFT codes
-for Borderlands games.
+for all Borderlands games.
 
 This was forked from matt1484's repo as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem SHiFT codes going forward.
 
