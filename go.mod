@@ -8,3 +8,5 @@ require (
 	github.com/thedevsaddam/gojsonq v2.3.0+incompatible
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
 )
+
+require github.com/andybalholm/cascadia v1.2.0 // indirect
