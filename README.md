@@ -17,7 +17,7 @@ This was forked from matt1484's repo as it appears to be no longer maintained. S
 4. Run it, you will be prompted for username and password
 5. Enter username and password (we only use this info to sign into borderlands)
 6. Watch it do its magic
-7. Repeat when more codes come out
+7. Repeat when more codes come out (or set up a cron job)
 
 
 Run it with `--help` to view command line args that are supported.
@@ -25,31 +25,40 @@ Run it with `--help` to view command line args that are supported.
 ### Installing
 
 #### Using go
-```sh
+```
 go get -u github.com/jauderho/bl3auto
 ```
 
 #### Docker
-To run from source:
-1. Install docker
-2. Download project
-3. Navigate to project
-4. Run `docker build -t bl3auto .`
-5. Run `docker run -it -v codes:/root/.config/bl3auto/bl3auto bl3auto`
+Source: https://hub.docker.com/r/jauderho/bl3auto/
+1. Install Docker
+2. Run `docker pull jauderho/bl3auto:latest`
+3. Run `docker run -it -v codes:/root/.config/bl3auto/bl3auto bl3auto`
     + The mounted volume will keep track of existing codes that have been used already
 
 #### Docker Compose (preferred)
-To run from source:
-1. Install docker and docker-compose
-2. Download project
-3. Navigate to project
-4. Create .env and put the following in the file
+1. Install Docker and docker-compose
+2. Create .env and put the following in the file
     + Add `BL3_EMAIL="me@myemail.com" and BL3_PASSWORD="mypassword"`
     + Replace `"me@myemail.com"` with your login email address
     + Replace `"mypassword"` with your login password
-5. Create "codes" subdirectory (optional)
-6. Run `docker-compose up`
+3. Use the compose.yml file below
 
+```
+services:
+  bl3auto:
+    container_name: bl3auto
+    image: jauderho/bl3auto:latest
+    command: ["bl3auto", "-e", "${BL3_EMAIL}", "-p", "${BL3_PASSWORD}"]
+    volumes:
+      - './codes:/root/.config/bl3auto/bl3auto'
+
+volumes:
+  codes:
+```
+
+4. Create "codes" subdirectory (optional)
+5. Run `docker-compose up`
 
 #### Using the prebuilt releases
 The binaries/executables are released
