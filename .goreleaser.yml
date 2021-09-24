@@ -1,0 +1,14 @@
+# .goreleaser.yml
+builds:
+  - env: [CGO_ENABLED=0]
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    dir: .
+    main: ./cmd/bl3auto.go
+    ldflags:
+      - -s -w 
