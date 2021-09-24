@@ -58,7 +58,8 @@ jobs:
           git diff --exit-code go.sum
 
       - name: Build
-        run: go build -v -ldflags="-s -w" .
+#        run: go build -v -ldflags="-s -w" .
+        run: go build -v -ldflags="-s -w" ./cmd/bl3auto.go
 
       - name: Test
         run: go test -v -race ./...
