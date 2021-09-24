@@ -9,21 +9,21 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.17
+  GO_VERSION: 1.17.1
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v2.3.4
-
-      - name: Install golangci-lint
-        run: curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s v1.35.2
-
-      - name: Lint
-        run: ./bin/golangci-lint run
+#  lint:
+#    name: Lint
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Check out code into the Go module directory
+#        uses: actions/checkout@v2.3.4
+#
+#      - name: Install golangci-lint
+#        run: curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s v1.35.2
+#
+#      - name: Lint
+#        run: ./bin/golangci-lint run
 
   build:
     name: Build
