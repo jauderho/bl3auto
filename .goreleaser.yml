@@ -5,9 +5,9 @@ builds:
       - linux
       - windows
       - darwin
-    goarch:
-      - amd64
-      - arm64
+#    goarch:
+#      - amd64
+#      - arm64
     dir: .
     main: ./cmd/bl3auto.go
     ldflags:
