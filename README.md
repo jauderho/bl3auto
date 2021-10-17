@@ -42,14 +42,14 @@ Source: https://hub.docker.com/r/jauderho/bl3auto/
     + Add `BL3_EMAIL="me@myemail.com" and BL3_PASSWORD="mypassword"`
     + Replace `"me@myemail.com"` with your login email address
     + Replace `"mypassword"` with your login password
-3. Use the compose.yml file below
+3. Use the compose.yml file below (Updated as of 10/16/2021)
 
 ```
 services:
   bl3auto:
     container_name: bl3auto
     image: jauderho/bl3auto:latest
-    command: ["bl3auto", "-e", "${BL3_EMAIL}", "-p", "${BL3_PASSWORD}"]
+    command: ["-e", "${BL3_EMAIL}", "-p", "${BL3_PASSWORD}"]
     volumes:
       - './codes:/root/.config/bl3auto/bl3auto'
 
