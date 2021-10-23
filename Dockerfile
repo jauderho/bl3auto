@@ -6,7 +6,7 @@ WORKDIR /go/src/github.com/jauderho/bl3auto
 ENV GO111MODULE=on
 
 RUN apk update \
-	&& apk add git \
+	&& apk add --no-cache git \
 	&& go mod download \
 	&& go mod verify \
 	&& go build -v -ldflags="-s -w" cmd/bl3auto.go
