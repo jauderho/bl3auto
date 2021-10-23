@@ -11,11 +11,6 @@ RUN apk update \
 	&& go mod verify \
 	&& go build -v -ldflags="-s -w" cmd/bl3auto.go
 
-#CMD go run cmd/main.go
-#CMD go run -v -ldflags="-s -w" cmd/main.go
-
-#RUN go build -v -ldflags="-s -w" cmd/bl3auto.go
-
 RUN ls -lh /go/src/github.com/jauderho/bl3auto/bl3auto 
 
 # ----------------------------------------------------------------------------
@@ -32,6 +27,4 @@ LABEL org.opencontainers.image.description="Borderlands3 Auto SHiFT Code Redempt
 
 COPY --from=build /go/src/github.com/jauderho/bl3auto/bl3auto /usr/local/bin/
 
-#ENTRYPOINT ["/usr/local/bin/bl3auto"]
-
-CMD ["bl3auto"]
+ENTRYPOINT ["/usr/local/bin/bl3auto"]
