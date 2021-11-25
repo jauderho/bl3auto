@@ -48,8 +48,8 @@ builds:
         goarch: s390x
     dir: .
     main: ./cmd/bl3auto.go
-    #flags:
-    #  - -trimpath
+    flags:
+      - -trimpath
     ldflags:
       - -s -w 
 

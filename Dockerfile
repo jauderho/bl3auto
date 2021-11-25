@@ -9,7 +9,7 @@ RUN apk update \
 	&& apk add --no-cache git \
 	&& go mod download \
 	&& go mod verify \
-	&& go build -v -ldflags="-s -w" cmd/bl3auto.go
+	&& go build -v -trimpath -ldflags="-s -w" cmd/bl3auto.go
 
 RUN ls -lh /go/src/github.com/jauderho/bl3auto/bl3auto 
 
