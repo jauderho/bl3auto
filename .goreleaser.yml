@@ -18,12 +18,12 @@ builds:
       - s390x
       - ppc64le
     goarm:
-      - 5
+      #- 5
       - 6
       - 7
     ignore:
-      - goos: darwin
-        goarch: arm64
+      #- goos: darwin
+      #  goarch: arm64
       - goos: darwin
         goarch: arm
       - goos: darwin
