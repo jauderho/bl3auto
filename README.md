@@ -71,8 +71,8 @@ Telling the operating system that we're a trusted source is expensive.
 This is a small open source project and we don't have the funds to correctly
 sign the app.
 
-### Running the app on macOS Catalina
-macOS Catalina may refuse to run the app because it is "from an unidentified developer".
+### Running the app on macOS
+macOS may refuse to run the app because it is "from an unidentified developer".
 To get around this, right click on the app in Finder, and while holding the `⌥ Option` key,
 click `Open` in the menu. You will be prompted with a message similar to this:
 
