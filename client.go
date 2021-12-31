@@ -25,7 +25,7 @@ type HttpResponse struct {
 func NewHttpClient() (*HttpClient, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		return nil, errors.New("Failed to setup cookies")
+		return nil, errors.New("failed to setup cookies")
 	}
 
 	return &HttpClient{
@@ -42,12 +42,12 @@ func (response *HttpResponse) BodyAsHtmlDoc() (*goquery.Document, error) {
 	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		return nil, errors.New("Invalid response code")
+		return nil, errors.New("invalid response code")
 	}
 
 	doc, err := goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		return nil, errors.New("Invalid html")
+		return nil, errors.New("invalid html")
 	}
 
 	return doc, nil
@@ -58,7 +58,7 @@ func (response *HttpResponse) BodyAsJson() (*gojsonq.JSONQ, error) {
 
 	bodyBytes, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, errors.New("Invalid response json")
+		return nil, errors.New("invalid response json")
 	}
 
 	return JsonFromBytes(bodyBytes), nil
@@ -124,17 +124,17 @@ type Bl3Client struct {
 func NewBl3Client() (*Bl3Client, error) {
 	client, err := NewHttpClient()
 	if err != nil {
-		return nil, errors.New("Failed to start client")
+		return nil, errors.New("failed to start client")
 	}
 
 	res, err := client.Get("https://raw.githubusercontent.com/jauderho/bl3auto/main/config.json")
 	if err != nil {
-		return nil, errors.New("Failed to get config")
+		return nil, errors.New("failed to get config")
 	}
 
 	configJson, err := res.BodyAsJson()
 	if err != nil {
-		return nil, errors.New("Failed to get config")
+		return nil, errors.New("failed to get config")
 	}
 	config := Bl3Config{}
 	configJson.Out(&config)
@@ -157,12 +157,12 @@ func (client *Bl3Client) Login(username string, password string) error {
 
 	loginRes, err := client.PostJson(client.Config.LoginUrl, data)
 	if err != nil {
-		return errors.New("Failed to submit login credentials")
+		return errors.New("failed to submit login credentials")
 	}
 	defer loginRes.Body.Close()
 
 	if loginRes.StatusCode != 200 {
-		return errors.New("Failed to login")
+		return errors.New("failed to login")
 	}
 
 	/* if loginRes.Header.Get(client.Config.LoginRedirectHeader) == "" {

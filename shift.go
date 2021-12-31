@@ -71,7 +71,7 @@ func (client *Bl3Client) GetCodePlatforms(code string) ([]string, bool) {
 func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
 	response, err := client.Post(client.Config.Shift.CodeInfoUrl+code+"/redeem/"+platform, "", nil)
 	if err != nil {
-		return errors.New("failed to initialize code redemption.")
+		return errors.New("failed to initialize code redemption")
 	}
 
 	type redemptionJob struct {
@@ -81,7 +81,7 @@ func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
 
 	resJson, err := response.BodyAsJson()
 	if err != nil {
-		return errors.New("bad code init response.")
+		return errors.New("bad code init response")
 	}
 
 	redemptionInfo := redemptionJob{}
@@ -93,19 +93,19 @@ func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
 		if redemptionError != "" {
 			return errors.New(strings.ToLower(strings.Join(strings.Split(redemptionError, "_"), " ")) + ". Try again later.")
 		}
-		return errors.New("failed to schedule code redemption.")
+		return errors.New("failed to schedule code redemption")
 	}
 	// not sure if this is necessary
 	time.Sleep(time.Duration(redemptionInfo.Wait) * time.Millisecond)
 
 	redeemResponse, err := client.Get(client.Config.Shift.CodeInfoUrl + code + "/job/" + redemptionInfo.JobId)
 	if err != nil {
-		return errors.New("failed to initialize code redemption.")
+		return errors.New("failed to initialize code redemption")
 	}
 
 	resJson, err = redeemResponse.BodyAsJson()
 	if err != nil {
-		return errors.New("bad code redemption response.")
+		return errors.New("bad code redemption response")
 	}
 
 	success := false
@@ -116,7 +116,7 @@ func (client *Bl3Client) RedeemShiftCode(code, platform string) error {
 		return errors.New(strings.ToLower(strings.Join(strings.Split(errs[0], "_"), " ")) + ".")
 	}
 	if !success {
-		return errors.New("failed to redeem SHiFT code.")
+		return errors.New("failed to redeem SHiFT code")
 	}
 
 	resJson.Out(&redemptionInfo)
@@ -129,7 +129,7 @@ func (client *Bl3Client) GetShiftPlatforms() (StringSet, error) {
 
 	response, err := client.Post(client.Config.Shift.UserInfoUrl, "", nil)
 	if err != nil {
-		return platforms, errors.New("Failed to get available platforms list")
+		return platforms, errors.New("failed to get available platforms list")
 	}
 
 	resJson, err := response.BodyAsJson()
@@ -155,12 +155,12 @@ func (client *Bl3Client) GetFullShiftCodeList() (ShiftCodeMap, error) {
 
 	res, err := httpClient.Get(client.Config.Shift.CodeListUrl)
 	if err != nil {
-		return codeMap, errors.New("Failed to get SHiFT code list")
+		return codeMap, errors.New("failed to get SHiFT code list")
 	}
 
 	json, err := res.BodyAsJson()
 	if err != nil {
-		return codeMap, errors.New("Failed to get SHiFT code list body as JSON")
+		return codeMap, errors.New("failed to get SHiFT code list body as JSON")
 	}
 
 	codes := make([]shiftCodeFromList, 0)
