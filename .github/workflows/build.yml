@@ -70,4 +70,5 @@ jobs:
         with:
           version: ${{ env.SC_VERSION }}
           install-go: false
+          cache-key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
 
