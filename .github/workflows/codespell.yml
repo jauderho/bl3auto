@@ -30,4 +30,5 @@ jobs:
         uses: codespell-project/actions-codespell@master
         with:
           check_filenames: true
+          builtin: clear,rare,code
           ignore_words_file: .codespellignore
