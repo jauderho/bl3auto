@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.17.5
+  GO_VERSION: 1.17.6
   SC_VERSION: 2021.1.2
 
 jobs:
