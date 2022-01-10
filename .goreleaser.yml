@@ -1,7 +1,16 @@
 # .goreleaser.yml
+release:
+  github:
+    owner: jauderho
+    name: bl3auto
+
+snapshot:
+  name_template: SNAPSHOT-{{ .Commit }}
+
 before:
   hooks:
     - go mod tidy
+    
 builds:
   - env:
       - CGO_ENABLED=0
@@ -94,8 +103,3 @@ changelog:
 checksum:
   algorithm: sha256
   name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
-
-release:
-  github:
-    owner: jauderho
-    name: bl3auto
