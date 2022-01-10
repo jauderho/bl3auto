@@ -55,11 +55,47 @@ builds:
     #ldflags:
     #  - -s -w 
 
+archives:
+  - format: tar.gz
+    wrap_in_directory: true
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: '{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    files:
+      - LICENSE
+      - README.md
+
+nfpms:
+  -
+    id: bl3auto-nfpms
+    package_name: bl3auto
+    file_name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    homepage: https://github.com/jauderho/bl3auto
+    maintainer: "Jauder Ho <jauderho@users.noreply.github.com>"
+    description: Borderlands Bulk Code Redemption System
+    license: Apache
+    formats:
+      - deb
+      - rpm
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+    - '^dev:'
+    - 'README'
+    - 'build\(deps\): bump .* in /docs \(#\d+\)'
+    - Merge pull request
+    - Merge branch
+
 checksum:
   algorithm: sha256
+  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
 
 release:
   github:
     owner: jauderho
     name: bl3auto
-
