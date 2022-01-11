@@ -6,6 +6,9 @@ release:
 
 snapshot:
   name_template: SNAPSHOT-{{ .Commit }}
+  
+gomod:
+  proxy: true
 
 before:
   hooks:
