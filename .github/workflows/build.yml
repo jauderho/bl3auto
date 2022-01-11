@@ -11,12 +11,19 @@ env:
   SC_VERSION: 2021.1.2
 
 jobs:
-#  lint:
-#    name: Lint
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Check out code into the Go module directory
-#        uses: actions/checkout@v2.4.0
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2.4.0
+        
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: latest
+          args: --enable maligned
+          
 #
 #      - name: Install golangci-lint
 #        run: curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s v1.35.2
