@@ -22,7 +22,7 @@ jobs:
         uses: golangci/golangci-lint-action@v2
         with:
           version: latest
-          args: --enable maligned
+          #args: --enable maligned
           
 #
 #      - name: Install golangci-lint
