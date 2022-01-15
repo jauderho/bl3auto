@@ -58,7 +58,8 @@ volumes:
 ```
 
 4. Create "codes" subdirectory (optional)
-5. Run `docker-compose up`
+    + Doing so will allow bl3auto to compare and avoid trying to redeem a previously used code
+6. Run `docker-compose up`
 
 #### Using the prebuilt releases
 The binaries/executables are released
