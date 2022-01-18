@@ -16,4 +16,8 @@
 codes
 bl3auto
 
+# goreleaser distribution directory
+dist
+
+# ignore cosign private key
 cosign.key
