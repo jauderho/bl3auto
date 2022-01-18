@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## v2.2.13 - 2022-01-18
+### Added
+* Use goreleaser to build & release
+* Add cosign and SBOM support. Credit to @shibumi and https://github.com/in-toto/in-toto-golang/pull/128/files
+
 ## v2.2 - 2021-07-10
 ### Changed
 * Removed all VIP code
