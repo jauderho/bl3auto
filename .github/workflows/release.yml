@@ -14,6 +14,9 @@ jobs:
     strategy:
       matrix:
         platform: [ubuntu-latest]
+    permissions:
+      id-token: write
+      contents: write
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Set up Go
@@ -39,7 +42,9 @@ jobs:
             ${{ runner.os }}-go-
 
       # Test cosign
-      - uses: sigstore/cosign-installer@v1.4.1
+      - uses: sigstore/cosign-installer@v1
+      
+      - uses: anchore/sbom-action/download-syft@v0.6.0
 
       # https://goreleaser.com/ci/actions/
       - name: Run GoReleaser
@@ -50,3 +55,5 @@ jobs:
           args: release -f .goreleaser.yml --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_EXPERIMENTAL: 1
+          
