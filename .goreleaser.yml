@@ -105,21 +105,21 @@ changelog:
     - Merge pull request
     - Merge branch
 
-source:
-  enabled: true
-
 checksum:
   algorithm: sha256
   name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
-  
+
+sboms:
+  - artifacts: archive
+  - id: source
+    artifacts: source
+
+source:
+  enabled: true
+
 signs:
   - cmd: cosign
     signature: "${artifact}.sig"
     certificate: "${artifact}.pem"
     args: ["sign-blob", "--oidc-issuer=https://token.actions.githubusercontent.com", "--output-certificate=${certificate}", "--output-signature=${signature}", "${artifact}"]
     artifacts: all
-
-sboms:
-  - artifacts: archive
-  - id: source
-    artifacts: source
