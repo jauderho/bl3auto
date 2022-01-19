@@ -1,4 +1,4 @@
-# Change Log
+# ChangeLog
 
 All notable changes to this project will be documented in this file.
 
@@ -53,8 +53,7 @@ and smaller executable)
 
 ## v1.1.0 - 2019-08-25
 ### Added
-* Support for command line args (email and
-  password)
+* Support for command-line args (email and password)
 
 ### Changed
 * Now uses REST endpoints and JSON parsing rather than headless browser
