@@ -8,6 +8,8 @@ on:
 env:
   GO_VERSION: 1.17.6
 
+permissions: read-all
+
 jobs:
   release:
     name: Release
