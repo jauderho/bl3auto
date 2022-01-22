@@ -6,7 +6,7 @@ on:
     branches:
     - main
     - master
-    
+
 permissions: read-all
 
 jobs:
