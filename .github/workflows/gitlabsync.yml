@@ -3,20 +3,22 @@
 name: Gitlab Sync
 
 on:
-  - push
-  - delete
+  push:
+    branches:
+    - main
+  delete: {}
 
 permissions: read-all
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     name: Git Repo Sync
     steps:
     - name: Harden Runner
       uses: step-security/harden-runner@14dc64f30986eaa2ad2dddcec073f5aab18e5a24 # v1
       with:
-        egress-policy: audit
+        egress-policy: block
         allowed-endpoints: 
           github.com:443
           gitlab.com:443
