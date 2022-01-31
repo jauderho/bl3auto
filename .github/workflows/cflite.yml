@@ -6,6 +6,8 @@ on:
       - main
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
  Fuzzing:
    runs-on: ubuntu-latest
