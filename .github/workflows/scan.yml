@@ -42,7 +42,7 @@ jobs:
           args: --sarif-file-output=snyk.sarif
           
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@8b37404d562d866ad6a65d0ecb4fa5131e047ca4 # v1
+        uses: github/codeql-action/upload-sarif@1a927e9307bc11970b2c679922ebc4d03a5bd980 # v1
         with:
           sarif_file: snyk.sarif
 
@@ -70,7 +70,7 @@ jobs:
           args: '-no-fail -fmt sarif -out results.sarif ./...'
           
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@8b37404d562d866ad6a65d0ecb4fa5131e047ca4 # v1
+        uses: github/codeql-action/upload-sarif@1a927e9307bc11970b2c679922ebc4d03a5bd980 # v1
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: results.sarif
