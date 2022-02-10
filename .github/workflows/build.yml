@@ -8,7 +8,7 @@ on:
 
 env:
   GO_VERSION: 1.17.6
-  SC_VERSION: 2021.1.2
+  STATICCHECK_VERSION: 2021.1.2
 
 permissions: read-all
 
@@ -46,6 +46,7 @@ jobs:
         uses: actions/setup-go@bfdd3570ce990073878bf10f6b2d79082de49492 # v2.1.5
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
         id: go
 
       - name: Check out code into the Go module directory
@@ -80,6 +81,6 @@ jobs:
       - name: Staticcheck
         uses: dominikh/staticcheck-action@4ec9a0dff54be2642bc76581598ba433fd8d4967 # v1.1.0
         with:
-          version: ${{ env.SC_VERSION }}
+          version: ${{ env.STATICCHECK_VERSION }}
           install-go: false
           cache-key: ${{ matrix.platform }}
