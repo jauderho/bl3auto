@@ -20,13 +20,14 @@ jobs:
       id-token: write
       contents: write
     runs-on: ${{ matrix.platform }}
+    
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@bdb12b622a910dfdc99a31fdfe6f45a16bc287a4 # v1
         with:
           egress-policy: block
-          allowed-endpoints:
-            artifactcache.actions.githubusercontent.com:443
+          disable-telemetry: true
+          allowed-endpoints: >
             frsnacprodeus2file1.blob.core.windows.net:443
             github.com:443
             goreleaser.com:443
@@ -37,7 +38,7 @@ jobs:
             storage.googleapis.com:443
             token.actions.githubusercontent.com:443
             toolbox-data.anchore.io:443
-            v1.fulcio.sigstore.dev:443         
+            v1.fulcio.sigstore.dev:443     
                   
       - name: Set up Go
         uses: actions/setup-go@bfdd3570ce990073878bf10f6b2d79082de49492 # v2.1.5
