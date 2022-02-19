@@ -126,7 +126,8 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 		folders := configDirs.QueryFolders(configdir.Global)
 		data, err := json.Marshal(&redeemedCodes)
 		if err == nil {
-			folders[0].WriteFile(configFilename, data)
+			err := folders[0].WriteFile(configFilename, data)
+			printError(err)
 		}
 	}
 
