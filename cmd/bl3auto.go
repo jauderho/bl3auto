@@ -21,6 +21,7 @@ const version = "2.2"
 
 const SUCCESS = "success!"
 const NOTFOUND = "not found."
+const DOTDOTDOT = "' . . . . . "
 
 var usernameHash string
 
@@ -75,7 +76,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 
 	if singleShiftCode != "" {
 		singleShiftCode = strings.TrimSpace(strings.ToUpper(singleShiftCode))
-		fmt.Print("Checking single SHIFT code '" + singleShiftCode + "' . . . . . ")
+		fmt.Print("Checking single SHIFT code '" + singleShiftCode + DOTDOTDOT)
 		platforms, valid := client.GetCodePlatforms(singleShiftCode)
 		if valid {
 			shiftCodes[singleShiftCode] = platforms
@@ -100,7 +101,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 			if _, found := platforms[platform]; found {
 				if !redeemedCodes.Contains(code, platform) {
 					foundCodes = true
-					fmt.Print("Trying '" + platform + "' SHIFT code '" + code + "' . . . . . ")
+					fmt.Print("Trying '" + platform + "' SHIFT code '" + code + DOTDOTDOT)
 					err := client.RedeemShiftCode(code, platform)
 					if err != nil {
 						fmt.Println(err)
@@ -182,7 +183,7 @@ func main() {
 		fmt.Println("Your version (" + version + ") is out of date. Please consider downloading the latest version (" + client.Config.Version + ") at https://github.com/jauderho/bl3auto/releases/latest")
 	}
 
-	fmt.Print("Logging in as '" + username + "' . . . . . ")
+	fmt.Print("Logging in as '" + username + DOTDOTDOT)
 	err = client.Login(username, password)
 	if err != nil {
 		printError(err)
