@@ -128,7 +128,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 		fmt.Println("No new SHIFT codes at this time. Try again later.")
 	} else {
 		folders := configDirs.QueryFolders(configdir.Global)
-		data, err := json.Marshal(&redeemedCodes)
+		data, err := json.MarshalIndent(&redeemedCodes, "", "  ")
 		if err == nil {
 			err := folders[0].WriteFile(configFilename, data)
 			printError(err)
