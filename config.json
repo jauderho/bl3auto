@@ -1,5 +1,5 @@
 {
-    "version": "2.2",
+    "version": "2.2.14",
     "loginUrl": "https://api.2k.com/borderlands/users/authenticate",
     "loginRedirectHeader": "X-CT-REDIRECT",
     "sessionIdHeader": "X-SESSION-SET",
