@@ -11,9 +11,9 @@ RUN apk update \
 	&& go mod verify \
 	&& go build -v -trimpath -ldflags="-s -w" cmd/bl3auto.go
 
-RUN ls -lh /go/src/github.com/jauderho/bl3auto/bl3auto 
 
 # ----------------------------------------------------------------------------
+
 
 #FROM scratch
 FROM alpine@sha256:21a3deaa0d32a8057914f36584b5288d2e5ecc984380bc0118285c70fa8c9300
