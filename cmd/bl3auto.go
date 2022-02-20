@@ -19,6 +19,9 @@ import (
 // gross but effective for now
 const version = "2.2"
 
+const SUCCESS = "success!"
+const NOTFOUND = "not found."
+
 var usernameHash string
 
 func printError(err error) {
@@ -43,7 +46,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 		printError(err)
 		return
 	}
-	fmt.Println("success!")
+	fmt.Println(SUCCESS)
 
 	configDirs := configdir.New("bl3auto", "bl3auto")
 	configFilename := usernameHash + "-shift-codes.json"
@@ -57,15 +60,15 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 			json := bl3.JsonFromBytes(data)
 			if json != nil {
 				json.Out(&redeemedCodes)
-				fmt.Println("success!")
+				fmt.Println(SUCCESS)
 			} else {
-				fmt.Println("not found.")
+				fmt.Println(NOTFOUND)
 			}
 		} else {
-			fmt.Println("not found.")
+			fmt.Println(NOTFOUND)
 		}
 	} else {
-		fmt.Println("not found.")
+		fmt.Println(NOTFOUND)
 	}
 
 	shiftCodes := bl3.ShiftCodeMap{}
@@ -76,7 +79,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 		platforms, valid := client.GetCodePlatforms(singleShiftCode)
 		if valid {
 			shiftCodes[singleShiftCode] = platforms
-			fmt.Println("success!")
+			fmt.Println(SUCCESS)
 		} else {
 			fmt.Println("no available redemption platforms found!")
 		}
@@ -88,7 +91,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 			return
 		}
 		shiftCodes = allShiftCodes
-		fmt.Println("success!")
+		fmt.Println(SUCCESS)
 	}
 
 	foundCodes := false
@@ -108,7 +111,7 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 						}
 					} else {
 						redeemedCodes[code] = append(redeemedCodes[code], platform)
-						fmt.Println("success!")
+						fmt.Println(SUCCESS)
 					}
 				} else if singleShiftCode != "" {
 					fmt.Println("The single SHIFT code has already been redeemed on the '" + platform + "' platform")
@@ -173,7 +176,7 @@ func main() {
 
 	client.Config.Shift.AllowInactive = allowInactive
 
-	fmt.Println("success!")
+	fmt.Println(SUCCESS)
 
 	if client.Config.Version != version {
 		fmt.Println("Your version (" + version + ") is out of date. Please consider downloading the latest version (" + client.Config.Version + ") at https://github.com/jauderho/bl3auto/releases/latest")
@@ -185,7 +188,7 @@ func main() {
 		printError(err)
 		return
 	}
-	fmt.Println("success!")
+	fmt.Println(SUCCESS)
 
 	doShift(client, singleShiftCode)
 
