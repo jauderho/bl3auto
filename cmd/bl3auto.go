@@ -17,7 +17,7 @@ import (
 )
 
 // gross but effective for now
-const version = "2.2.14"
+const version = "2.2.15"
 
 const SUCCESS = "success!"
 const NOTFOUND = "not found."
@@ -131,7 +131,10 @@ func doShift(client *bl3.Bl3Client, singleShiftCode string) {
 		data, err := json.MarshalIndent(&redeemedCodes, "", "  ")
 		if err == nil {
 			err := folders[0].WriteFile(configFilename, data)
-			printError(err)
+			if err != nil {
+				printError(err)
+				return
+			}
 		}
 	}
 
