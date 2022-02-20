@@ -21,9 +21,6 @@ jobs:
   build:
     # Name the Job
     name: Lint Code Base
-    permissions:
-      contents: read # for actions/checkout to fetch code
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
     # Set the agent to run on
     runs-on: ubuntu-latest
 
