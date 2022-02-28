@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # v2.4.0
         
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@c675eb70db3aa26b496bc4e64da320480338d41b # v2
+        uses: golangci/golangci-lint-action@b517f99ae23d86ecc4c0dec08dcf48d2336abc29 # v2
         with:
           version: latest
           #args: --enable maligned
