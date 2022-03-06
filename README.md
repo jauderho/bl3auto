@@ -6,7 +6,7 @@
 Cross platform Go app for automatically redeeming SHiFT codes
 for all Borderlands games.
 
-This was forked from matt1484's repo as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem SHiFT codes going forward.
+This was forked from matt1484's [repo](https://github.com/matt1484/bl3_auto_vip) as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem SHiFT codes going forward.
 
 
 ## Getting Started
