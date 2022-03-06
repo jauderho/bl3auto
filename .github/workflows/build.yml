@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.17.8
+  GO_VERSION: 1.17.x
   STATICCHECK_VERSION: 2021.1.2
 
 permissions: read-all
@@ -21,15 +21,6 @@ jobs:
         uses: step-security/harden-runner@bdb12b622a910dfdc99a31fdfe6f45a16bc287a4 # v1
         with:
           egress-policy: audit
-          disable-telemetry: false
-          allowed-endpoints: >
-            artifactcache.actions.githubusercontent.com:443
-            frsnacprodeus2file1.blob.core.windows.net:443
-            github.com:443
-            golang.org:443
-            objects.githubusercontent.com:443
-            proxy.golang.org:443
-            raw.githubusercontent.com:443
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@a12a3943b4bdde767164f792f33f40b04645d846 # v2.4.0
