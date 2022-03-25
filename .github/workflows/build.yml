@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.17.x
+  GO_VERSION: 1.18.x
   STATICCHECK_VERSION: 2021.1.2
 
 permissions: read-all
@@ -20,8 +20,8 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@9b0655f430fba8c7001d4e38f8d4306db5c6e0ab # v1
         with:
-          egress-policy: audit
-          disable-telemetry: false
+          egress-policy: block
+          disable-telemetry: true
           allowed-endpoints: >
             artifactcache.actions.githubusercontent.com:443
             frsnacprodeus2file1.blob.core.windows.net:443
@@ -63,23 +63,6 @@ jobs:
             proxy.golang.org:443        
             raw.githubusercontent.com:443
             storage.googleapis.com:443
-
-      - name: Honeycomb Buildevents
-        uses: kvrhdn/gha-buildevents@b78f61a163d7027aba21a7c55761587e7dab38be # v1
-        with:
-          # Required: a Honeycomb API key - needed to send traces.
-          apikey: ${{ secrets.BUILDEVENTS_APIKEY }}
-
-          # Required: the Honeycomb dataset to send traces to.
-          dataset: gha-buildevents-bl3auto
-
-          # Required: the job status, this will be used in the post section and sent
-          # as status of the trace. Must always be ${{ job.status }}.
-          job-status: ${{ job.status }}
-
-          # Optional: this should only be used in combination with matrix builds. Set
-          # this to a value uniquely describing each matrix configuration.
-          matrix-key: ${{ matrix.platform }}
 
       - name: Set up Go
         uses: actions/setup-go@f6164bd8c8acb4a71fb2791a8b6c4024ff038dab # v2.1.5
