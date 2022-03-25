@@ -63,7 +63,24 @@ jobs:
             proxy.golang.org:443        
             raw.githubusercontent.com:443
             storage.googleapis.com:443
-        
+
+      - name: Honeycomb Buildevents
+        uses: kvrhdn/gha-buildevents@b78f61a163d7027aba21a7c55761587e7dab38be # v1
+        with:
+          # Required: a Honeycomb API key - needed to send traces.
+          apikey: ${{ secrets.BUILDEVENTS_APIKEY }}
+
+          # Required: the Honeycomb dataset to send traces to.
+          dataset: gha-buildevents-bl3auto
+
+          # Required: the job status, this will be used in the post section and sent
+          # as status of the trace. Must always be ${{ job.status }}.
+          job-status: ${{ job.status }}
+
+          # Optional: this should only be used in combination with matrix builds. Set
+          # this to a value uniquely describing each matrix configuration.
+          matrix-key: ${{ matrix.platform }}
+
       - name: Set up Go
         uses: actions/setup-go@f6164bd8c8acb4a71fb2791a8b6c4024ff038dab # v2.1.5
         with:
