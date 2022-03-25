@@ -41,7 +41,9 @@ jobs:
             rekor.sigstore.dev:443
             storage.googleapis.com:443
             token.actions.githubusercontent.com:443
-            toolbox-data.anchore.io:443    
+            toolbox-data.anchore.io:443
+            uploads.github.com:443
+            v1.fulcio.sigstore.dev:443
 
       - name: Honeycomb Buildevents
         uses: kvrhdn/gha-buildevents@b78f61a163d7027aba21a7c55761587e7dab38be # v1
