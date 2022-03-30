@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.17.x
+  GO_VERSION: 1.18.x
   STATICCHECK_VERSION: 2022.1
 
 permissions: read-all
