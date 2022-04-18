@@ -33,7 +33,8 @@ go get -u github.com/jauderho/bl3auto
 Source: https://hub.docker.com/r/jauderho/bl3auto/
 1. Install Docker
 2. Run `docker pull jauderho/bl3auto:latest`
-3. Run `docker run -it -v codes:/root/.config/bl3auto/bl3auto jauderho/bl3auto:latest`
+3. Optional: Create `codes` subdirectory to store output from previous runs with `mkdir codes`
+4. Run `docker run -it -v codes:/root/.config/bl3auto/bl3auto jauderho/bl3auto:latest`
     + The mounted volume will keep track of existing codes that have been used already
 
 #### Docker Compose (preferred)
@@ -57,9 +58,9 @@ volumes:
   codes:
 ```
 
-4. Create "codes" subdirectory (optional)
+4. Optional: Create `codes` subdirectory to store output from previous runs with `mkdir codes`
     + Doing so will allow bl3auto to compare and avoid trying to redeem a previously used code
-6. Run `docker-compose up`
+5. Run `docker-compose up`
 
 #### Using the prebuilt releases
 The binaries/executables are released
