@@ -86,6 +86,7 @@ brews:
       name: homebrew-bl3auto
     homepage: "https://github.com/jauderho/bl3auto/"
     description: "Borderlands and Wonderlands Bulk Code Redemption System"
+    license: Apache
 
 nfpms:
   -
