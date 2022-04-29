@@ -80,6 +80,13 @@ archives:
       - LICENSE
       - README.md
 
+brews:
+  - github:
+      owner: jauderho
+      name: homebrew-bl3auto
+    homepage: "https://github.com/jauderho/bl3auto/"
+    description: "Borderlands and Wonderlands Bulk Code Redemption System"
+
 nfpms:
   -
     id: bl3auto-nfpms
@@ -87,7 +94,7 @@ nfpms:
     file_name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     homepage: https://github.com/jauderho/bl3auto
     maintainer: "Jauder Ho <jauderho@users.noreply.github.com>"
-    description: Borderlands Bulk Code Redemption System
+    description: Borderlands and Wonderlands Bulk Code Redemption System
     license: Apache
     formats:
       - deb
