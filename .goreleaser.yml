@@ -81,9 +81,12 @@ archives:
       - README.md
 
 brews:
-  - github:
+  - tap:
       owner: jauderho
       name: homebrew-bl3auto
+    commit_author:
+      name: Jauder Ho
+      email: jauderho@users.noreply.github.com
     homepage: "https://github.com/jauderho/bl3auto/"
     description: "Borderlands and Wonderlands Bulk Code Redemption System"
     license: Apache
@@ -93,9 +96,9 @@ nfpms:
     id: bl3auto-nfpms
     package_name: bl3auto
     file_name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    homepage: https://github.com/jauderho/bl3auto
+    homepage: "https://github.com/jauderho/bl3auto"
     maintainer: "Jauder Ho <jauderho@users.noreply.github.com>"
-    description: Borderlands and Wonderlands Bulk Code Redemption System
+    description: "Borderlands and Wonderlands Bulk Code Redemption System"
     license: Apache
     formats:
       - deb
