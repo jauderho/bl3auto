@@ -35,6 +35,8 @@ builds:
     goarm:
       - 6
       - 7
+    goamd64:
+      - v3
     ignore:
       - goos: linux
         goarch: ppc64
@@ -62,10 +64,11 @@ builds:
         goarch: s390x
     dir: .
     main: ./cmd/bl3auto.go
+    mod_timestamp: '{{ .CommitTimestamp }}'
     flags:
       - -trimpath
-    #ldflags:
-    #  - -s -w 
+    ldflags:
+      - -s -w 
 
 archives:
   - format: tar.gz
