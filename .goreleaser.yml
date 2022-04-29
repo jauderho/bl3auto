@@ -89,7 +89,7 @@ brews:
       email: jauderho@users.noreply.github.com
     homepage: "https://github.com/jauderho/bl3auto/"
     description: "Borderlands and Wonderlands Bulk Code Redemption System"
-    license: Apache
+    license: Apache-2.0
 
 nfpms:
   -
@@ -99,7 +99,7 @@ nfpms:
     homepage: "https://github.com/jauderho/bl3auto"
     maintainer: "Jauder Ho <jauderho@users.noreply.github.com>"
     description: "Borderlands and Wonderlands Bulk Code Redemption System"
-    license: Apache
+    license: Apache-2.0
     formats:
       - deb
       - rpm
