@@ -15,7 +15,7 @@ jobs:
     name: Release
     strategy:
       matrix:
-        platform: [ubuntu-latest]
+        platform: [ubuntu-22.04]
     permissions:
       id-token: write
       contents: write
