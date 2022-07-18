@@ -24,11 +24,6 @@ Run it with `--help` to view command line args that are supported.
 
 ### Installing
 
-#### Using go
-```
-go get -u github.com/jauderho/bl3auto
-```
-
 #### Docker
 Source: https://hub.docker.com/r/jauderho/bl3auto/
 1. Install Docker
