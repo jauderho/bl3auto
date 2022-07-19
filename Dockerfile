@@ -1,4 +1,4 @@
-FROM golang:1.19rc2-alpine3.16@sha256:66dae1681ef8d42bcf1a6dddef80f8be47bca379b76ec19c3c4261eab8edbe75 AS build
+FROM golang:1.19rc2-alpine3.16@sha256:9fb8f95cd3733a911fe30df6743962f5a3e4d8c4267060df430213c67bdeee02 AS build
 
 COPY . /go/src/github.com/jauderho/bl3auto
 WORKDIR /go/src/github.com/jauderho/bl3auto
