@@ -32,6 +32,7 @@ jobs:
           disable-telemetry: true
           allowed-endpoints: >
             api.github.com:443
+            api.snyk.io:443
             github.com:443
             proxy.golang.org:443
             snyk.io:443
