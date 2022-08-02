@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 
@@ -56,7 +55,7 @@ func (response *HttpResponse) BodyAsHtmlDoc() (*goquery.Document, error) {
 func (response *HttpResponse) BodyAsJson() (*gojsonq.JSONQ, error) {
 	defer response.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(response.Body)
+	bodyBytes, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, errors.New("invalid response json")
 	}
