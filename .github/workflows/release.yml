@@ -25,8 +25,8 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@74b568e8591fbb3115c70f3436a0c6b0909a8504 # v1
         with:
-          egress-policy: block
-          disable-telemetry: true
+          egress-policy: audit
+          disable-telemetry: false
           allowed-endpoints: >
             api.github.com:443
             api.honeycomb.io:443
@@ -34,6 +34,7 @@ jobs:
             frsnacprodeus2file1.blob.core.windows.net:443
             fulcio.sigstore.dev:443
             github.com:443
+            golang.org:443
             goreleaser.com:443
             objects.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
