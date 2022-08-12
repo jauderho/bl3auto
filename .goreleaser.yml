@@ -114,6 +114,7 @@ changelog:
     - '^docs:'
     - '^test:'
     - '^dev:'
+    - '^gha:'
     - 'README'
     - 'build\(deps\): bump .* in /docs \(#\d+\)'
     - Merge pull request
