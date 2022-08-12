@@ -91,7 +91,7 @@ brews:
       name: Jauder Ho
       email: jauderho@users.noreply.github.com
     homepage: "https://github.com/jauderho/bl3auto/"
-    description: "Borderlands and Wonderlands Bulk Code Redemption System"
+    description: "Borderlands and Wonderlands Bulk SHiFT Code Redemption System"
     license: Apache-2.0
 
 nfpms:
@@ -101,7 +101,7 @@ nfpms:
     file_name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     homepage: "https://github.com/jauderho/bl3auto"
     maintainer: "Jauder Ho <jauderho@users.noreply.github.com>"
-    description: "Borderlands and Wonderlands Bulk Code Redemption System"
+    description: "Borderlands and Wonderlands Bulk SHiFT Code Redemption System"
     license: Apache-2.0
     formats:
       - deb
