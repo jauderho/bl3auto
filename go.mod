@@ -10,5 +10,5 @@ require (
 
 require (
 	github.com/andybalholm/cascadia v1.3.1 // indirect
-	golang.org/x/net v0.0.0-20220805013720-a33c5aa5df48 // indirect
+	golang.org/x/net v0.0.0-20220812174116-3211cb980234 // indirect
 )
