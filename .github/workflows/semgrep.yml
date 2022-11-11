@@ -26,6 +26,6 @@ jobs:
         
     - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v2
     
-    - uses: returntocorp/semgrep-action@a1b24862a2e00c5175d47e8a512f63ae03b4b7b5 # v1
+    - uses: returntocorp/semgrep-action@72a8de180a6b863541d1397c31ea8946dbbb4f4f # v1
       with:
         publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
