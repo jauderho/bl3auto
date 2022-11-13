@@ -57,7 +57,7 @@ jobs:
 
           # Required: the job status, this will be used in the post section and sent
           # as status of the trace. Must always be ${{ job.status }}.
-          job-status: ${{ job.status }}
+          status: ${{ job.status }}
 
           # Optional: this should only be used in combination with matrix builds. Set
           # this to a value uniquely describing each matrix configuration.
