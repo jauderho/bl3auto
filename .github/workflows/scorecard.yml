@@ -33,6 +33,7 @@ jobs:
             api.osv.dev:443
             bestpractices.coreinfrastructure.org:443
             codeload.github.com:443
+            fulcio.sigstore.dev:443
             github.com:443
             oauth2.sigstore.dev:443
           
