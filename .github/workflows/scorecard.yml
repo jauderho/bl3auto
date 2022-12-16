@@ -15,7 +15,7 @@ permissions: read-all
 jobs:
   analysis:
     name: Scorecards analysis
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     permissions:
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
@@ -27,6 +27,7 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@ebacdc22ef6c2cfb85ee5ded8f2e640f4c776dd5 # v1
         with:
+          disable-sudo: true
           egress-policy: block
           disable-telemetry: true
           allowed-endpoints: >
