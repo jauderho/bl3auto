@@ -19,6 +19,7 @@ jobs:
     permissions:
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
+      id-token: write
       actions: read
       contents: read
 
@@ -31,11 +32,14 @@ jobs:
           allowed-endpoints: >
             api.github.com:443
             api.osv.dev:443
+            api.securityscorecards.dev:443
             bestpractices.coreinfrastructure.org:443
             codeload.github.com:443
             fulcio.sigstore.dev:443
             github.com:443
             oauth2.sigstore.dev:443
+            rekor.sigstore.dev:443
+            sigstore-tuf-root.storage.googleapis.com:443
           
       - name: "Checkout code"
         uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v2.4.0
