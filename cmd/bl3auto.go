@@ -17,7 +17,7 @@ import (
 )
 
 // gross but effective for now
-const version = "2.2.22"
+const version = "2.2.23"
 
 const SUCCESS = "success!"
 const NOTFOUND = "not found."
