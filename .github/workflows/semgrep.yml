@@ -24,7 +24,7 @@ jobs:
           metrics.semgrep.dev:443
           semgrep.dev:443
         
-    - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v2
+    - uses: actions/checkout@24cb9080177205b6e8c946b17badbe402adc938f # v2
     
     - uses: returntocorp/semgrep-action@2e352e1a85f5c8722b894e67bed8b2f8874ad628 # v1
       with:
