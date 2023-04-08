@@ -76,8 +76,9 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
-    replacements:
-      darwin: macos
+    #replacements:
+    #  darwin: macos
+    rlcp: true
     name_template: '{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
     files:
       - LICENSE
@@ -131,6 +132,7 @@ sboms:
 
 source:
   enabled: true
+  rlcp: true
 
 signs:
   - cmd: cosign
