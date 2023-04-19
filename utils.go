@@ -1,7 +1,7 @@
 package bl3auto
 
 import (
-	"github.com/thedevsaddam/gojsonq"
+	"github.com/thedevsaddam/gojsonq/v2"
 )
 
 type StringSet map[string]struct{}

@@ -9,7 +9,7 @@ import (
 	"net/http/cookiejar"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/thedevsaddam/gojsonq"
+	"github.com/thedevsaddam/gojsonq/v2"
 )
 
 type HttpClient struct {
