@@ -9,6 +9,6 @@ require (
 )
 
 require (
-	github.com/andybalholm/cascadia v1.3.1 // indirect
+	github.com/andybalholm/cascadia v1.3.2 // indirect
 	golang.org/x/net v0.9.0 // indirect
 )
