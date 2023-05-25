@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v2.4.0
       
       - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/golang@7fad562681122205233d1242c3bb39598c5393da # master
+        uses: snyk/actions/golang@b98d498629f1c368650224d6d212bf7dfa89e4bf # master
         continue-on-error: true # To make sure that SARIF upload gets called
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
