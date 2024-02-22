@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.21.x
-  STATICCHECK_VERSION: 2023.1.5
+  GO_VERSION: 1.22.x
+  STATICCHECK_VERSION: 2023.1.7
 
 permissions: read-all
 
