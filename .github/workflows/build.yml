@@ -101,7 +101,7 @@ jobs:
         run: go test -v -race ./...
        
       - name: Staticcheck
-        uses: dominikh/staticcheck-action@ba605356b4b29a60e87ab9404b712f3461e566dc # v1.1.0
+        uses: dominikh/staticcheck-action@fe1dd0c3658873b46f8c9bb3291096a617310ca6 # v1.1.0
         with:
           version: ${{ env.STATICCHECK_VERSION }}
           install-go: false
