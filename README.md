@@ -2,6 +2,7 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/jauderho/bl3auto)](https://goreportcard.com/report/github.com/jauderho/bl3auto)
 [![GitHub Super-Linter](https://github.com/jauderho/bl3auto/workflows/Lint%20Code%20Base/badge.svg)](https://github.com/jauderho/bl3auto/actions/workflows/linter.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jauderho/bl3auto/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jauderho/bl3auto)
 
 Cross platform Go app for automatically redeeming SHiFT codes
 for all Borderlands and Wonderlands games.
