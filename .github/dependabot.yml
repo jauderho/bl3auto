@@ -19,7 +19,7 @@ updates:
       interval: "daily"
     commit-message:
       prefix: "golang:"
-      
+
   # Maintain dependencies for Docker
   - package-ecosystem: "docker"
     directory: "/"
@@ -28,4 +28,3 @@ updates:
       interval: "daily"
     commit-message:
       prefix: "docker:"
-      
