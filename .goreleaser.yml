@@ -1,4 +1,6 @@
 # .goreleaser.yml
+version: 2
+
 release:
   github:
     owner: jauderho
@@ -78,14 +80,13 @@ archives:
         format: zip
     #replacements:
     #  darwin: macos
-    rlcp: true
     name_template: "{{ .ConventionalFileName }}"
     files:
       - LICENSE
       - README.md
 
 brews:
-  - tap:
+  - repository:
       owner: jauderho
       name: homebrew-bl3auto
     commit_author:
@@ -132,7 +133,6 @@ sboms:
 
 source:
   enabled: true
-  rlcp: true
 
 signs:
   - cmd: cosign
