@@ -1,4 +1,4 @@
-FROM golang:1.23rc2-alpine3.20@sha256:4e01b8bb65905d246d7932d6417f6e68b4ad1833940c085917ca2d6dab96933d AS build
+FROM ghcr.io/jauderho/golang:1.22.6-alpine3.20@sha256:1fd3c00db78749fbe841af819e4f52a5f11d23461c939f4615301c6fac412900 AS build
 
 COPY . /go/src/github.com/jauderho/bl3auto
 WORKDIR /go/src/github.com/jauderho/bl3auto
@@ -16,7 +16,7 @@ RUN apk update \
 
 
 #FROM scratch
-FROM alpine:3.20.2@sha256:0a4eaa0eecf5f8c050e5bba433f58c052be7587ee8af3e8b3910ef9ab5fbe9f5
+FROM ghcr.io/jauderho/alpine:3.20.2@sha256:6f037df56ca0bf09c6854daa341457f5105b1f2ec73b52bc5090026770feb1be
 
 LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
 LABEL org.opencontainers.image.url="https://github.com/jauderho/bl3auto"
