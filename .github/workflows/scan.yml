@@ -77,7 +77,7 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v2
         
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@abfe8cfd6d5687c96abf31f8e7f57982df2a6e4f # master
+        uses: securego/gosec@be8bd6e40be105333f2bc783ba8d688154441559 # master
         with:
           # we let the report trigger content trigger a failure using the GitHub Security features.
           args: '-no-fail -fmt sarif -out results.sarif ./...'
