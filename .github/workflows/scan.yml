@@ -38,7 +38,7 @@ jobs:
             snyk.io:443
           
       - name: Checkout code
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v2.4.0
+        uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v2.4.0
         
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/golang@b98d498629f1c368650224d6d212bf7dfa89e4bf # master
@@ -74,7 +74,7 @@ jobs:
             snyk.io:443
           
       - name: Checkout Source
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v2
+        uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v2
         
       - name: Run Gosec Security Scanner
         uses: securego/gosec@be8bd6e40be105333f2bc783ba8d688154441559 # master
