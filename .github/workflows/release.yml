@@ -94,7 +94,7 @@ jobs:
 
       # https://goreleaser.com/ci/actions/
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@286f3b13b1b49da4ac219696163fb8c1c93e1200 # v2
+        uses: goreleaser/goreleaser-action@9ed2f89a662bf1735a48bc8557fd212fa902bebf # v2
         #if: startsWith(github.ref, 'refs/tags/v')
         with:
           version: latest
