@@ -9,7 +9,7 @@
         "Referer": "https://borderlands.com/en-US/"
     },
     "shiftConfig": {
-        "codeListUrl": "https://shift.orcicorn.com/shift-code/index.json",
+        "codeListUrl": "https://raw.githubusercontent.com/ugoogalizer/autoshift-codes/main/shiftcodes.json",
         "codeInfoUrl": "https://api.2k.com/borderlands/code/",
         "userInfoUrl": "https://api.2k.com/borderlands/users/me",
         "gameCodename": "oak"
