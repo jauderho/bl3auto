@@ -46,7 +46,7 @@ jobs:
     name: Build
     strategy:
       matrix:
-        platform: [ubuntu-24.04, windows-2022, macos-15]
+        platform: [ubuntu-24.04, windows-2025, macos-15]
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Harden Runner
