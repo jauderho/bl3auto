@@ -16,7 +16,7 @@ RUN apk update \
 
 
 #FROM scratch
-FROM ghcr.io/jauderho/alpine:3.21.3@sha256:84330efd3f79b9d1211b49fb07cd03e1a7e1b6c9b8946afeffe337d25cba1a06
+FROM ghcr.io/jauderho/alpine:3.21.3@sha256:6140157579a734c234937ab0e8465075a69dbb138c019ed50f229546401a485f
 
 LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
 LABEL org.opencontainers.image.url="https://github.com/jauderho/bl3auto"
