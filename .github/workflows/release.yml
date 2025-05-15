@@ -90,7 +90,7 @@ jobs:
         uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v1.4.1
       
       - name: Generate SBOM
-        uses: anchore/sbom-action/download-syft@9f7302141466aa6482940f15371237e9d9f4c34a # v0.6.0
+        uses: anchore/sbom-action/download-syft@e11c554f704a0b820cbf8c51673f6945e0731532 # v0.6.0
 
       # https://goreleaser.com/ci/actions/
       - name: Run GoReleaser
