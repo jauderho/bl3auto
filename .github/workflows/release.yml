@@ -47,7 +47,7 @@ jobs:
             v1.fulcio.sigstore.dev:443
 
       - name: Honeycomb Buildevents
-        uses: honeycombio/gha-buildevents@e891e91ad0fcd80b71430a97ebf5a9baecac388a # v1
+        uses: honeycombio/gha-buildevents@e5d529f2a2a3eea1605786749c78cbb3122c46b5 # v1
         with:
           # Required: a Honeycomb API key - needed to send traces.
           apikey: ${{ secrets.BUILDEVENTS_APIKEY }}
