@@ -87,7 +87,7 @@ jobs:
             ${{ runner.os }}-go-
             
       - name: Cosign
-        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v1.4.1
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v1.4.1
       
       - name: Generate SBOM
         uses: anchore/sbom-action/download-syft@7b36ad622f042cab6f59a75c2ac24ccb256e9b45 # v0.6.0
