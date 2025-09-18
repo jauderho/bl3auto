@@ -1,17 +1,17 @@
 {
     "version": "2.2.28",
-    "loginUrl": "https://api.2k.com/borderlands/users/authenticate",
-    "loginRedirectHeader": "X-CT-REDIRECT",
-    "sessionIdHeader": "X-SESSION-SET",
-    "sessionHeader": "X-SESSION",
+    "loginUrl": "https://shift.gearboxsoftware.com/sessions",
+    "loginRedirectHeader": "Location",
+    "sessionIdHeader": "Set-Cookie",
+    "sessionHeader": "Cookie",
     "requestHeaders": {
-        "Origin": "https://borderlands.com",
-        "Referer": "https://borderlands.com/en-US/"
+        "Origin": "https://shift.gearboxsoftware.com",
+        "Referer": "https://shift.gearboxsoftware.com/home"
     },
     "shiftConfig": {
         "codeListUrl": "https://raw.githubusercontent.com/ugoogalizer/autoshift-codes/main/shiftcodes.json",
-        "codeInfoUrl": "https://api.2k.com/borderlands/code/",
-        "userInfoUrl": "https://api.2k.com/borderlands/users/me",
+        "codeInfoUrl": "https://shift.gearboxsoftware.com/rewards",
+        "userInfoUrl": "https://shift.gearboxsoftware.com/rewards",
         "gameCodename": "oak"
     }
 }

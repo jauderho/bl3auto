@@ -21,3 +21,8 @@ dist
 
 # ignore cosign private key
 cosign.key
+
+# ignore test.sh and test files
+test.sh
+cookies.txt
+headers.txt
