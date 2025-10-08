@@ -1,8 +1,6 @@
 module github.com/jauderho/bl3auto
 
-go 1.24.0
-
-toolchain go1.25.0
+go 1.25.2
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
@@ -12,5 +10,5 @@ require (
 
 require (
 	github.com/andybalholm/cascadia v1.3.3 // indirect
-	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/net v0.45.0 // indirect
 )
