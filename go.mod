@@ -2,6 +2,8 @@ module github.com/jauderho/bl3auto
 
 go 1.25.2
 
+toolchain go1.25.3
+
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0
