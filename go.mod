@@ -2,7 +2,7 @@ module github.com/jauderho/bl3auto
 
 go 1.25.2
 
-toolchain go1.25.7
+toolchain go1.26.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
