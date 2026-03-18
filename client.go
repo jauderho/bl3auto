@@ -38,7 +38,7 @@ func NewHttpClient() (*HttpClient, error) {
 }
 
 func (response *HttpResponse) BodyAsHtmlDoc() (*goquery.Document, error) {
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != 200 {
 		return nil, errors.New("invalid response code")
@@ -53,7 +53,7 @@ func (response *HttpResponse) BodyAsHtmlDoc() (*goquery.Document, error) {
 }
 
 func (response *HttpResponse) BodyAsJson() (*gojsonq.JSONQ, error) {
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	bodyBytes, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -158,7 +158,7 @@ func (client *Bl3Client) Login(username string, password string) error {
 	if err != nil {
 		return errors.New("failed to submit login credentials")
 	}
-	defer loginRes.Body.Close()
+	defer func() { _ = loginRes.Body.Close() }()
 
 	if loginRes.StatusCode != 200 {
 		return errors.New("failed to login")
