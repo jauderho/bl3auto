@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.23.x
+  GO_VERSION: 1.26.x
   STATICCHECK_VERSION: 2024.1.1
 
 permissions: read-all
@@ -46,7 +46,7 @@ jobs:
     name: Build
     strategy:
       matrix:
-        platform: [ubuntu-24.04, windows-2025, macos-15]
+        platform: [ubuntu-24.04, windows-2025, macos-26]
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Harden Runner
