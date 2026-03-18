@@ -2,6 +2,7 @@ package bl3auto
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 )
@@ -21,12 +22,7 @@ func (codeMap ShiftCodeMap) Contains(code, platform string) bool {
 	if !found {
 		return false
 	}
-	for _, p := range platforms {
-		if p == platform {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(platforms, platform)
 }
 
 type shiftCode struct {

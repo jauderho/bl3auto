@@ -107,7 +107,7 @@ func (client *HttpClient) Post(url, contentType string, body io.Reader) (*HttpRe
 	return client.Do(req)
 }
 
-func (client *HttpClient) PostJson(url string, data interface{}) (*HttpResponse, error) {
+func (client *HttpClient) PostJson(url string, data any) (*HttpResponse, error) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
