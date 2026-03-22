@@ -23,7 +23,7 @@ jobs:
     
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v1
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594  # v2.16.0
         with:
           egress-policy: audit
           disable-telemetry: false
@@ -47,7 +47,7 @@ jobs:
             v1.fulcio.sigstore.dev:443
 
       - name: Honeycomb Buildevents
-        uses: honeycombio/gha-buildevents@7389488052ba8631dae2ea3177d4e0b619d2af22 # v1
+        uses: honeycombio/gha-buildevents@7389488052ba8631dae2ea3177d4e0b619d2af22  # v3.1.1
         with:
           # Required: a Honeycomb API key - needed to send traces.
           apikey: ${{ secrets.BUILDEVENTS_APIKEY }}
@@ -64,20 +64,20 @@ jobs:
           #matrix-key: ${{ matrix.platform }}
 
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v2.1.5
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417  # v6.3.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
         id: go
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v2.4.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
 
       # https://github.com/marketplace/actions/cache
       - name: Cache Go modules
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v2
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: |
             ~/.cache/go-build
@@ -87,14 +87,14 @@ jobs:
             ${{ runner.os }}-go-
             
       - name: Cosign
-        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v1.4.1
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22  # v4.1.0
       
       - name: Generate SBOM
-        uses: anchore/sbom-action/download-syft@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.6.0
+        uses: anchore/sbom-action/download-syft@57aae528053a48a3f6235f2d9461b05fbcb7366d  # v0.23.1
 
       # https://goreleaser.com/ci/actions/
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v2
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29  # v7.0.0
         #if: startsWith(github.ref, 'refs/tags/v')
         with:
           version: latest

@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v1
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594  # v2.16.0
         with:
           egress-policy: block
           disable-telemetry: true
@@ -38,10 +38,10 @@ jobs:
             snyk.io:443
           
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v2.4.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         
       - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/golang@9adf32b1121593767fc3c057af55b55db032dc04 # master
+        uses: snyk/actions/golang@9adf32b1121593767fc3c057af55b55db032dc04  # v1.0.0
         continue-on-error: true # To make sure that SARIF upload gets called
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -49,7 +49,7 @@ jobs:
           args: --sarif-file-output=snyk.sarif
           
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v1
+        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8  # v4.33.0
         with:
           sarif_file: snyk.sarif
 
@@ -63,7 +63,7 @@ jobs:
     
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v1
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594  # v2.16.0
         with:
           egress-policy: block
           disable-telemetry: true
@@ -74,16 +74,16 @@ jobs:
             snyk.io:443
           
       - name: Checkout Source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@223e19b8856e00f02cc67804499a83f77e208f3c # master
+        uses: securego/gosec@223e19b8856e00f02cc67804499a83f77e208f3c  # v2.25.0
         with:
           # we let the report trigger content trigger a failure using the GitHub Security features.
           args: '-no-fail -fmt sarif -out results.sarif ./...'
           
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v1
+        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8  # v4.33.0
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: results.sarif

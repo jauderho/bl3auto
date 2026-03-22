@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - name: Harden Runner
-      uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v1
+      uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594  # v2.16.0
       with:
         egress-policy: block
         disable-telemetry: true
@@ -24,8 +24,8 @@ jobs:
           metrics.semgrep.dev:443
           semgrep.dev:443
         
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v2
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
     
-    - uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
+    - uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d  # v1
       with:
         publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
