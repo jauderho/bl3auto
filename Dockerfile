@@ -1,4 +1,4 @@
-FROM ghcr.io/jauderho/golang:1.26.3-alpine3.23@sha256:cf67c14a6caa08f9b67c023c141261f78eae0a405742883cd1dde7f12048d0bc AS build
+FROM ghcr.io/jauderho/golang:1.26.3-alpine3.23@sha256:4a6ae06392540cc88ceb97772b8e5f40c5c064d8363572290c7eab9d4dbbc05a AS build
 
 COPY . /go/src/github.com/jauderho/bl3auto
 WORKDIR /go/src/github.com/jauderho/bl3auto
