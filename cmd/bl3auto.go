@@ -57,6 +57,12 @@ var (
 // single --shift-code redemption stays fast and un-throttled.
 const bulkThreshold = 5
 
+// resolveCacheFolder returns the folder that stores the redeemed-codes cache —
+// the directory the Docker `codes/` volume maps onto. Overridable in tests.
+var resolveCacheFolder = func() *configdir.Config {
+	return configdir.New("bl3auto", "bl3auto").QueryFolders(configdir.Global)[0]
+}
+
 // withBackoff runs op. When retry is true and op reports ErrRateLimited, it
 // retries with exponential backoff and returns stop=true if the limit persists
 // past rateLimitRetries (the caller should then halt the run). When retry is
@@ -194,21 +200,21 @@ func writeRedeemedCodes(folder *configdir.Config, configFilename string, redeeme
 	return folder.WriteFile(configFilename, data)
 }
 
-func loadRedeemedCodes(configDirs configdir.ConfigDir, configFilename string) bl3.ShiftCodeMap {
+func loadRedeemedCodes(folder *configdir.Config, configFilename string) bl3.ShiftCodeMap {
 	fmt.Print("Getting previously redeemed SHIFT codes . . . . . ")
-	folder := configDirs.QueryFolderContainsFile(configFilename)
-	if folder == nil {
+	codes := readRedeemedCodes(folder, configFilename)
+	if len(codes) == 0 {
 		fmt.Println(NOTFOUND)
-		return bl3.ShiftCodeMap{}
+	} else {
+		fmt.Println(SUCCESS)
 	}
-	fmt.Println(SUCCESS)
-	return readRedeemedCodes(folder, configFilename)
+	return codes
 }
 
 func doShift(client *bl3.Bl3Client, opts shiftOptions) {
-	configDirs := configdir.New("bl3auto", "bl3auto")
+	cacheFolder := resolveCacheFolder()
 	configFilename := usernameHash + "-shift-codes.json"
-	redeemedCodes := loadRedeemedCodes(configDirs, configFilename)
+	redeemedCodes := loadRedeemedCodes(cacheFolder, configFilename)
 
 	// Gather the candidate codes: a single code, or the full list from the source.
 	var codes []bl3.ShiftCode
@@ -318,8 +324,7 @@ codeLoop:
 	}
 
 	if cacheDirty && !opts.dryrun {
-		folders := configDirs.QueryFolders(configdir.Global)
-		if err := writeRedeemedCodes(folders[0], configFilename, redeemedCodes); err != nil {
+		if err := writeRedeemedCodes(cacheFolder, configFilename, redeemedCodes); err != nil {
 			printError(err)
 		}
 	}

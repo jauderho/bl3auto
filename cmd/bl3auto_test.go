@@ -30,6 +30,93 @@ func shrinkBackoff(t *testing.T, retries int) {
 	})
 }
 
+// useTempCache points the redeemed-codes cache at a fresh temp dir (standing in
+// for the Docker codes/ volume) for the duration of a test, and returns it.
+func useTempCache(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	orig := resolveCacheFolder
+	resolveCacheFolder = func() *configdir.Config {
+		return &configdir.Config{Path: dir, Type: configdir.Global}
+	}
+	t.Cleanup(func() { resolveCacheFolder = orig })
+	return dir
+}
+
+// cachingTestServer serves n redeemable codes (each on steam+epic) with
+// successful redemptions, plus the endpoints doShift needs.
+func cachingTestServer(t *testing.T, n int) *httptest.Server {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString(`[{"meta":{},"codes":[`)
+	for i := 1; i <= n; i++ {
+		if i > 1 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"code":"CODE%02d","game":"Borderlands 4","expired":false}`, i)
+	}
+	b.WriteString(`]}]`)
+	listJSON := b.String()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			code := r.URL.Query().Get("code")
+			for _, svc := range []string{"steam", "epic"} {
+				_, _ = io.WriteString(w, `<form class="new_archway_code_redemption" id="new_archway_code_redemption">`+
+					`<input id="archway_code_redemption_service" name="archway_code_redemption[service]" value="`+svc+`">`+
+					`<input name="archway_code_redemption[code]" value="`+code+`"></form>`)
+			}
+		case "/code_redemptions":
+			_, _ = io.WriteString(w, `<div class="alert">Your code was successfully redeemed</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+}
+
+// TestDoShiftCachesAcrossRuns mirrors the manual two-run validation: run 1
+// redeems all codes and writes the cache; run 2 reads the cache and skips them.
+func TestDoShiftCachesAcrossRuns(t *testing.T) {
+	shrinkBackoff(t, 5) // disable pacing so the bulk run is fast
+	cacheDir := useTempCache(t)
+	usernameHash = "cache-test"
+
+	const n = 10
+	srv := cachingTestServer(t, n)
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	// Run 1: a fresh cache, so every code (on both services) is redeemed.
+	out1 := captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	if got := strings.Count(out1, "Trying "); got != n*2 {
+		t.Errorf("run 1 should attempt %d redemptions, got %d:\n%s", n*2, got, out1)
+	}
+
+	// The cache must now hold all n codes (each on steam+epic).
+	folder := &configdir.Config{Path: cacheDir, Type: configdir.Global}
+	cached := readRedeemedCodes(folder, "cache-test-shift-codes.json")
+	if len(cached) != n {
+		t.Fatalf("expected %d codes cached, got %d", n, len(cached))
+	}
+	if !cached.Contains("CODE01", "steam") || !cached.Contains("CODE01", "epic") {
+		t.Errorf("cache missing expected services: %v", cached["CODE01"])
+	}
+
+	// Run 2: everything is cached, so nothing is attempted.
+	out2 := captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	if strings.Contains(out2, "Trying ") {
+		t.Errorf("run 2 should skip all cached codes, but attempted a redemption:\n%s", out2)
+	}
+	if !strings.Contains(out2, "No new SHIFT codes") {
+		t.Errorf("run 2 should report no new codes, got:\n%s", out2)
+	}
+}
+
 func TestRedeemedCodesRoundTrip(t *testing.T) {
 	folder := &configdir.Config{Path: t.TempDir(), Type: configdir.Global}
 	const fn = "test-shift-codes.json"
@@ -114,6 +201,7 @@ func TestDoShiftRateLimitStops(t *testing.T) {
 	}))
 	defer srv.Close()
 	usernameHash = "unittest-doshift"
+	useTempCache(t)
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
@@ -201,6 +289,7 @@ func TestDoShiftSingleCodeDryRun(t *testing.T) {
 	srv := shiftTestServer()
 	defer srv.Close()
 	usernameHash = "unittest-doshift"
+	useTempCache(t)
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
@@ -216,6 +305,7 @@ func TestDoShiftPlatformFilterDryRun(t *testing.T) {
 	srv := shiftTestServer()
 	defer srv.Close()
 	usernameHash = "unittest-doshift"
+	useTempCache(t)
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
@@ -230,6 +320,7 @@ func TestDoShiftAlreadyRedeemedReason(t *testing.T) {
 	srv := shiftTestServer()
 	defer srv.Close()
 	usernameHash = "unittest-doshift"
+	useTempCache(t)
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
