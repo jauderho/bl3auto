@@ -38,6 +38,7 @@ jobs:
             golang.org:443
             proxy.golang.org:443
             pypi.org:443
+            storage.googleapis.com:443
             zrdfepirv2blaprdstr01a.blob.core.windows.net:443
           
       - name: Checkout Code
