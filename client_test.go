@@ -1,6 +1,7 @@
 package bl3auto
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestClient builds a Bl3Client whose endpoints all point at the given test
@@ -534,6 +536,47 @@ func TestStringSetAndContains(t *testing.T) {
 	}
 	if m.Contains("MISSING", "steam") {
 		t.Error("Contains should be false for missing code")
+	}
+}
+
+func TestThrottlePacing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	c, _ := NewHttpClient()
+	c.SetThrottle(30*time.Millisecond, 0)
+
+	start := time.Now()
+	for range 3 {
+		if _, err := c.Get(srv.URL); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// First request isn't delayed; the next two are spaced ~30ms each.
+	if elapsed := time.Since(start); elapsed < 50*time.Millisecond {
+		t.Errorf("expected pacing to add ~60ms across 3 requests, got %v", elapsed)
+	}
+}
+
+func TestRateLimitedDetection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, metaTokenPage)
+		case "/entitlement_offer_codes":
+			w.WriteHeader(http.StatusTooManyRequests)
+		case "/code_redemptions":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+
+	if _, _, err := c.GetCodeRedemptionForms("X"); !errors.Is(err, ErrRateLimited) {
+		t.Errorf("entitlement 429 should report ErrRateLimited, got %v", err)
+	}
+	if err := c.RedeemForm(RedemptionForm{Service: "steam", Fields: map[string]string{"a": "b"}}); !errors.Is(err, ErrRateLimited) {
+		t.Errorf("redemption 503 should report ErrRateLimited, got %v", err)
 	}
 }
 

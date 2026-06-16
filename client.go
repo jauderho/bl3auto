@@ -5,16 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/thedevsaddam/gojsonq/v2"
 )
+
+// ErrRateLimited is returned when SHiFT responds with 429 (Too Many Requests)
+// or 503 (Service Unavailable). Callers should back off rather than retry hard.
+var ErrRateLimited = errors.New("rate limited by SHiFT")
 
 // remoteConfigUrl is the default location of the published runtime config. It is
 // fetched at startup so the GearBox endpoints can be hot-fixed without a release.
@@ -23,6 +29,11 @@ const remoteConfigUrl = "https://raw.githubusercontent.com/jauderho/bl3auto/main
 type HttpClient struct {
 	http.Client
 	headers http.Header
+
+	// Request pacing (see SetThrottle). Zero minInterval disables pacing.
+	minInterval time.Duration
+	jitter      time.Duration
+	lastRequest time.Time
 }
 
 type HttpResponse struct {
@@ -36,7 +47,7 @@ func NewHttpClient() (*HttpClient, error) {
 	}
 
 	return &HttpClient{
-		http.Client{
+		Client: http.Client{
 			Jar: jar,
 			// Don't auto-follow redirects: the SHiFT login (302) and code
 			// redemption (302) flows need to inspect the Location header and
@@ -45,7 +56,7 @@ func NewHttpClient() (*HttpClient, error) {
 				return http.ErrUseLastResponse
 			},
 		},
-		http.Header{
+		headers: http.Header{
 			// Browser-like headers; the SHiFT site rejects the old "BL3 Auto SHiFT"
 			// User-Agent. Accept-Encoding is intentionally left unset so Go's
 			// transport negotiates and transparently decompresses gzip.
@@ -98,7 +109,31 @@ func (client *HttpClient) SetDefaultHeader(k, v string) {
 	client.headers.Set(k, v)
 }
 
+// SetThrottle paces outgoing requests so consecutive calls are spaced at least
+// minInterval apart, plus a random amount up to jitter. This keeps bulk
+// redemption under SHiFT's rate limits and makes traffic look less bot-like.
+func (client *HttpClient) SetThrottle(minInterval, jitter time.Duration) {
+	client.minInterval = minInterval
+	client.jitter = jitter
+}
+
+// pace sleeps as needed to honour the configured request spacing.
+func (client *HttpClient) pace() {
+	if client.minInterval <= 0 {
+		return
+	}
+	target := client.minInterval
+	if client.jitter > 0 {
+		target += time.Duration(rand.Int64N(int64(client.jitter) + 1))
+	}
+	if d := time.Until(client.lastRequest.Add(target)); d > 0 {
+		time.Sleep(d)
+	}
+	client.lastRequest = time.Now()
+}
+
 func (client *HttpClient) Do(req *http.Request) (*HttpResponse, error) {
+	client.pace()
 	// Default headers only fill in what the caller hasn't set, so per-request
 	// headers (Referer, X-CSRF-Token, X-Requested-With, ...) are preserved.
 	for k, v := range client.headers {
@@ -286,6 +321,8 @@ func (client *Bl3Client) Login(username string, password string) error {
 		}
 		// Success: the cookie jar already captured the new _session_id.
 		return nil
+	case http.StatusTooManyRequests:
+		return fmt.Errorf("%w during login (status 429); please try again later", ErrRateLimited)
 	case http.StatusServiceUnavailable:
 		return errors.New("SHiFT login service is temporarily unavailable (503); please try again later")
 	case http.StatusOK:

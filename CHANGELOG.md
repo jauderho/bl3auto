@@ -19,6 +19,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * New flags: `--v1`, `--v2`, `--platform`, `--config`, `--dryrun`, `-v/--verbose`,
   and a documented `--help`.
 * `--allow-inactive` now includes codes flagged as expired in the v2 source.
+* Rate-limit handling for bulk redemption: requests are paced and the tool backs
+  off (and stops cleanly, saving progress) on HTTP 429/503 instead of hammering.
 
 ## v2.2.13 - 2022-01-18
 ### Added

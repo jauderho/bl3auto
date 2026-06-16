@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,9 +10,69 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	bl3 "github.com/jauderho/bl3auto"
 )
+
+// shrinkBackoff sets tiny rate-limit timings for the duration of a test.
+func shrinkBackoff(t *testing.T, retries int) {
+	t.Helper()
+	ob, om, or := rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries
+	rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = time.Millisecond, time.Millisecond, retries
+	t.Cleanup(func() { rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = ob, om, or })
+}
+
+func TestWithBackoff(t *testing.T) {
+	shrinkBackoff(t, 3)
+
+	// Rate-limited a few times, then succeeds.
+	calls := 0
+	err, stop := withBackoff(func() error {
+		calls++
+		if calls < 3 {
+			return fmt.Errorf("%w", bl3.ErrRateLimited)
+		}
+		return nil
+	})
+	if err != nil || stop || calls != 3 {
+		t.Errorf("retry-then-success: err=%v stop=%v calls=%d", err, stop, calls)
+	}
+
+	// Persistent rate limiting → stop.
+	if _, stop := withBackoff(func() error { return fmt.Errorf("%w", bl3.ErrRateLimited) }); !stop {
+		t.Error("persistent rate limit should signal stop")
+	}
+
+	// A non-rate-limit error returns immediately without retrying.
+	calls = 0
+	sentinel := errors.New("boom")
+	err, stop = withBackoff(func() error { calls++; return sentinel })
+	if stop || !errors.Is(err, sentinel) || calls != 1 {
+		t.Errorf("passthrough: stop=%v err=%v calls=%d", stop, err, calls)
+	}
+}
+
+func TestDoShiftRateLimitStops(t *testing.T) {
+	shrinkBackoff(t, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/code_redemptions/new" {
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+			return
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	usernameHash = "unittest-doshift"
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() {
+		doShift(c, shiftOptions{singleShiftCode: "X", dryrun: true})
+	})
+	if !strings.Contains(out, "Stopped early") {
+		t.Errorf("expected rate-limit stop message, got:\n%s", out)
+	}
+}
 
 func TestSummarize(t *testing.T) {
 	if got := summarize("  hello   world \n"); got != "hello world" {

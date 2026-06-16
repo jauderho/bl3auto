@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -174,6 +175,9 @@ func (client *Bl3Client) GetCodeRedemptionForms(code string) ([]RedemptionForm, 
 	_ = res.Body.Close()
 	client.logf("GET %s?code=%s -> %d", client.Config.Shift.RedemptionInfoUrl, code, res.StatusCode)
 
+	if res.StatusCode == http.StatusTooManyRequests || res.StatusCode == http.StatusServiceUnavailable {
+		return nil, "", fmt.Errorf("%w (status %d)", ErrRateLimited, res.StatusCode)
+	}
 	if res.StatusCode != 200 {
 		// A 5xx here generally means the code itself was rejected as invalid.
 		return nil, "", fmt.Errorf("code query returned status %d", res.StatusCode)
@@ -235,6 +239,9 @@ func (client *Bl3Client) resolveRedemption(res *HttpResponse) error {
 
 	for range 10 {
 		switch res.StatusCode {
+		case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+			_ = res.Body.Close()
+			return fmt.Errorf("%w (status %d)", ErrRateLimited, res.StatusCode)
 		case 301, 302, 303:
 			location := res.Header.Get("Location")
 			_ = res.Body.Close()

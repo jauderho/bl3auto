@@ -29,6 +29,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -39,6 +40,38 @@ import (
 	bl3 "github.com/jauderho/bl3auto"
 	"github.com/shibukawa/configdir"
 )
+
+// Request pacing and rate-limit backoff (sensible defaults; not user-tunable).
+// Spacing requests and backing off on HTTP 429/503 lets us redeem in bulk
+// without tripping SHiFT's rate limits or risking a ban.
+var (
+	throttleBase      = 400 * time.Millisecond // minimum spacing between SHiFT requests
+	throttleJitter    = 400 * time.Millisecond // added random spacing (0..jitter)
+	rateLimitBaseWait = 2 * time.Second        // first backoff on a 429/503
+	rateLimitMaxWait  = 30 * time.Second       // backoff ceiling
+	rateLimitRetries  = 5                      // give up (stop the run) after this many
+)
+
+// withBackoff runs op, retrying with exponential backoff while it reports
+// ErrRateLimited. It returns the final error and stop=true when the rate limit
+// persisted past rateLimitRetries, signalling the caller to halt the run.
+func withBackoff(op func() error) (err error, stop bool) {
+	wait := rateLimitBaseWait
+	for attempt := 1; ; attempt++ {
+		err = op()
+		if err == nil || !errors.Is(err, bl3.ErrRateLimited) {
+			return err, false
+		}
+		if attempt > rateLimitRetries {
+			return err, true
+		}
+		fmt.Printf("Rate limited by SHiFT; backing off %s (retry %d/%d) . . .\n", wait, attempt, rateLimitRetries)
+		time.Sleep(wait)
+		if wait *= 2; wait > rateLimitMaxWait {
+			wait = rateLimitMaxWait
+		}
+	}
+}
 
 // gross but effective for now
 const version = "2.3.0"
@@ -175,10 +208,23 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 
 	redeemedAny := false
 	cacheDirty := false
+	rateLimited := false
 
+codeLoop:
 	for _, sc := range codes {
 		code := sc.Code
-		forms, reason, err := client.GetCodeRedemptionForms(code)
+
+		var forms []bl3.RedemptionForm
+		var reason string
+		err, stop := withBackoff(func() error {
+			var e error
+			forms, reason, e = client.GetCodeRedemptionForms(code)
+			return e
+		})
+		if stop {
+			rateLimited = true
+			break codeLoop
+		}
 		if err != nil {
 			fmt.Println("Skipping '" + code + "': " + err.Error())
 			continue
@@ -207,7 +253,13 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 			}
 
 			fmt.Print("Trying '" + form.Service + "' SHIFT code '" + code + DOTDOTDOT)
-			if rerr := client.RedeemForm(form); rerr != nil {
+			rerr, stop := withBackoff(func() error { return client.RedeemForm(form) })
+			if stop {
+				fmt.Println("rate limited.")
+				rateLimited = true
+				break codeLoop
+			}
+			if rerr != nil {
 				fmt.Println(rerr)
 				low := strings.ToLower(rerr.Error())
 				if strings.Contains(low, "already") || strings.Contains(low, "expired") {
@@ -222,7 +274,9 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 		}
 	}
 
-	if !redeemedAny {
+	if rateLimited {
+		fmt.Println("Stopped early due to repeated SHiFT rate limiting. Progress saved; re-run later to continue.")
+	} else if !redeemedAny {
 		if opts.singleShiftCode != "" {
 			fmt.Println("The single SHIFT code could not be redeemed at this time. Try again later.")
 		} else {
@@ -318,6 +372,7 @@ func main() {
 	}
 	client.Verbose = verbose
 	client.Config.Shift.AllowInactive = allowInactive
+	client.SetThrottle(throttleBase, throttleJitter)
 	fmt.Println(SUCCESS)
 
 	if client.Config.Version != version {
