@@ -19,11 +19,10 @@ func JsonFromBytes(bytes []byte) *gojsonq.JSONQ {
 }
 
 type Bl3Config struct {
-	Version             string            `json:"version"`
-	LoginUrl            string            `json:"loginUrl"`
-	LoginRedirectHeader string            `json:"loginRedirectHeader"`
-	SessionIdHeader     string            `json:"sessionIdHeader"`
-	RequestHeaders      map[string]string `json:"requestHeaders"`
-	SessionHeader       string            `json:"sessionHeader"`
-	Shift               ShiftConfig       `json:"shiftConfig"`
+	Version        string            `json:"version"`
+	BaseUrl        string            `json:"baseUrl"`
+	HomeUrl        string            `json:"homeUrl"`
+	LoginUrl       string            `json:"loginUrl"`
+	RequestHeaders map[string]string `json:"requestHeaders"`
+	Shift          ShiftConfig       `json:"shiftConfig"`
 }

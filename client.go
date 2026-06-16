@@ -1,16 +1,24 @@
 package bl3auto
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/thedevsaddam/gojsonq/v2"
 )
+
+// remoteConfigUrl is the default location of the published runtime config. It is
+// fetched at startup so the GearBox endpoints can be hot-fixed without a release.
+const remoteConfigUrl = "https://raw.githubusercontent.com/jauderho/bl3auto/main/config.json"
 
 type HttpClient struct {
 	http.Client
@@ -30,9 +38,20 @@ func NewHttpClient() (*HttpClient, error) {
 	return &HttpClient{
 		http.Client{
 			Jar: jar,
+			// Don't auto-follow redirects: the SHiFT login (302) and code
+			// redemption (302) flows need to inspect the Location header and
+			// drive the redirect chain manually, mirroring autoshift.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 		http.Header{
-			"User-Agent": []string{"BL3 Auto SHiFT"},
+			// Browser-like headers; the SHiFT site rejects the old "BL3 Auto SHiFT"
+			// User-Agent. Accept-Encoding is intentionally left unset so Go's
+			// transport negotiates and transparently decompresses gzip.
+			"User-Agent":      []string{"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0"},
+			"Accept":          []string{"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+			"Accept-Language": []string{"en-US,en;q=0.5"},
 		},
 	}, nil
 }
@@ -64,9 +83,15 @@ func (response *HttpResponse) BodyAsJson() (*gojsonq.JSONQ, error) {
 }
 
 func getResponse(res *http.Response, err error) (*HttpResponse, error) {
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, errors.New("received nil response")
+	}
 	return &HttpResponse{
 		*res,
-	}, err
+	}, nil
 }
 
 func (client *HttpClient) SetDefaultHeader(k, v string) {
@@ -74,7 +99,12 @@ func (client *HttpClient) SetDefaultHeader(k, v string) {
 }
 
 func (client *HttpClient) Do(req *http.Request) (*HttpResponse, error) {
+	// Default headers only fill in what the caller hasn't set, so per-request
+	// headers (Referer, X-CSRF-Token, X-Requested-With, ...) are preserved.
 	for k, v := range client.headers {
+		if req.Header.Get(k) != "" {
+			continue
+		}
 		for _, x := range v {
 			req.Header.Set(k, x)
 		}
@@ -82,61 +112,89 @@ func (client *HttpClient) Do(req *http.Request) (*HttpResponse, error) {
 	return getResponse(client.Client.Do(req))
 }
 
-func (client *HttpClient) Get(url string) (*HttpResponse, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func (client *HttpClient) Get(rawurl string) (*HttpResponse, error) {
+	return client.GetWithHeaders(rawurl, nil)
+}
+
+func (client *HttpClient) GetWithHeaders(rawurl string, headers map[string]string) (*HttpResponse, error) {
+	req, err := http.NewRequest("GET", rawurl, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return client.Do(req)
+}
+
+func (client *HttpClient) Head(rawurl string) (*HttpResponse, error) {
+	req, err := http.NewRequest("HEAD", rawurl, nil)
 	if err != nil {
 		return nil, err
 	}
 	return client.Do(req)
 }
 
-func (client *HttpClient) Head(url string) (*HttpResponse, error) {
-	req, err := http.NewRequest("HEAD", url, nil)
+// PostForm submits url-encoded form data with optional per-request headers.
+func (client *HttpClient) PostForm(rawurl string, data url.Values, headers map[string]string) (*HttpResponse, error) {
+	req, err := http.NewRequest("POST", rawurl, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	return client.Do(req)
 }
 
-func (client *HttpClient) Post(url, contentType string, body io.Reader) (*HttpResponse, error) {
-	req, err := http.NewRequest("POST", url, body)
+// fetchBytes retrieves a public URL using the default (redirect-following) HTTP
+// client. Used for the remote config and SHiFT code lists hosted on GitHub raw,
+// which may 302 to a CDN and so cannot use the no-redirect SHiFT client.
+func fetchBytes(rawurl string) ([]byte, error) {
+	resp, err := http.Get(rawurl) //nolint:gosec // URLs come from trusted config
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", contentType)
-	return client.Do(req)
-}
-
-func (client *HttpClient) PostJson(url string, data any) (*HttpResponse, error) {
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s returned status %d", rawurl, resp.StatusCode)
 	}
-	return client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	return io.ReadAll(resp.Body)
 }
 
 type Bl3Client struct {
 	HttpClient
-	Config Bl3Config
+	Config  Bl3Config
+	Verbose bool
 }
 
-func NewBl3Client() (*Bl3Client, error) {
+// NewBl3Client builds a client from config. When configPath is non-empty the
+// config is read from that local file (useful for testing new URLs before they
+// are merged); otherwise it is fetched from the published remote config.
+func NewBl3Client(configPath string) (*Bl3Client, error) {
 	client, err := NewHttpClient()
 	if err != nil {
 		return nil, errors.New("failed to start client")
 	}
 
-	res, err := client.Get("https://raw.githubusercontent.com/jauderho/bl3auto/main/config.json")
-	if err != nil {
-		return nil, errors.New("failed to get config")
+	var configBytes []byte
+	if configPath != "" {
+		configBytes, err = os.ReadFile(configPath)
+		if err != nil {
+			return nil, errors.New("failed to read config '" + configPath + "': " + err.Error())
+		}
+	} else {
+		configBytes, err = fetchBytes(remoteConfigUrl)
+		if err != nil {
+			return nil, errors.New("failed to get config: " + err.Error())
+		}
 	}
 
-	configJson, err := res.BodyAsJson()
-	if err != nil {
-		return nil, errors.New("failed to get config")
-	}
 	config := Bl3Config{}
-	configJson.Out(&config)
+	if err := json.Unmarshal(configBytes, &config); err != nil {
+		return nil, errors.New("failed to parse config: " + err.Error())
+	}
 
 	for header, value := range config.RequestHeaders {
 		client.SetDefaultHeader(header, value)
@@ -148,32 +206,74 @@ func NewBl3Client() (*Bl3Client, error) {
 	}, nil
 }
 
+func (client *Bl3Client) logf(format string, args ...any) {
+	if client.Verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] "+format+"\n", args...)
+	}
+}
+
+// getCsrfToken fetches a SHiFT page and extracts its CSRF token. SHiFT exposes
+// the token in a <meta name="csrf-token"> tag on rendered pages and in the
+// login form's hidden authenticity_token input; we try both.
+func (client *Bl3Client) getCsrfToken(pageUrl string) (string, error) {
+	res, err := client.Get(pageUrl)
+	if err != nil {
+		return "", err
+	}
+	doc, err := res.BodyAsHtmlDoc()
+	if err != nil {
+		return "", err
+	}
+	if token, ok := doc.Find(`meta[name="csrf-token"]`).Attr("content"); ok && token != "" {
+		return token, nil
+	}
+	if token, ok := doc.Find(`input[name="authenticity_token"]`).Attr("value"); ok && token != "" {
+		return token, nil
+	}
+	return "", errors.New("csrf token not found")
+}
+
+// Login authenticates against the GearBox SHiFT website: fetch the login page
+// for a CSRF token, then POST the credentials. On success the session cookie is
+// stored in the client's cookie jar and used for subsequent requests.
 func (client *Bl3Client) Login(username string, password string) error {
-	data := map[string]string{
-		"username": username,
-		"password": password,
-	}
-
-	loginRes, err := client.PostJson(client.Config.LoginUrl, data)
+	token, err := client.getCsrfToken(client.Config.HomeUrl)
 	if err != nil {
-		return errors.New("failed to submit login credentials")
+		return errors.New("failed to load login page: " + err.Error())
 	}
-	defer func() { _ = loginRes.Body.Close() }()
+	client.logf("got login csrf token (%d chars)", len(token))
 
-	if loginRes.StatusCode != 200 {
-		return errors.New("failed to login")
-	}
+	form := url.Values{}
+	form.Set("utf8", "✓")
+	form.Set("authenticity_token", token)
+	form.Set("user[email]", username)
+	form.Set("user[password]", password)
+	form.Set("commit", "SIGN IN")
 
-	/* if loginRes.Header.Get(client.Config.LoginRedirectHeader) == "" {
-		return errors.New("Failed to start session")
-	}
-
-	sessionRes, err := client.Get(loginRes.Header.Get(client.Config.LoginRedirectHeader))
+	res, err := client.PostForm(client.Config.LoginUrl, form, map[string]string{
+		"Referer": client.Config.HomeUrl,
+	})
 	if err != nil {
-		return errors.New("Failed to get session")
+		return errors.New("failed to submit login credentials: " + err.Error())
 	}
-	defer sessionRes.Body.Close()*/
+	defer func() { _ = res.Body.Close() }()
+	client.logf("POST %s -> %d", client.Config.LoginUrl, res.StatusCode)
 
-	client.SetDefaultHeader(client.Config.SessionHeader, loginRes.Header.Get(client.Config.SessionIdHeader))
-	return nil
+	switch res.StatusCode {
+	case http.StatusFound, http.StatusSeeOther, http.StatusMovedPermanently:
+		location := res.Header.Get("Location")
+		// A failed login bounces back to the home page with redirect_to=false.
+		if strings.Contains(location, "redirect_to=false") {
+			return errors.New("login failed - invalid email or password")
+		}
+		// Success: the cookie jar already captured the new _session_id.
+		return nil
+	case http.StatusServiceUnavailable:
+		return errors.New("SHiFT login service is temporarily unavailable (503); please try again later")
+	case http.StatusOK:
+		// SHiFT re-renders the login form (200) instead of redirecting on failure.
+		return errors.New("login failed - invalid email or password")
+	default:
+		return errors.New("unexpected login response status: " + strconv.Itoa(res.StatusCode))
+	}
 }

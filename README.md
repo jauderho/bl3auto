@@ -5,9 +5,12 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jauderho/bl3auto/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jauderho/bl3auto)
 
 Cross platform Go app for automatically redeeming SHiFT codes
-for all Borderlands and Wonderlands games.
+for all Borderlands and Wonderlands games, including **Borderlands 4**.
 
 This was forked from matt1484's [repo](https://github.com/matt1484/bl3_auto_vip) as it appears to be no longer maintained. Since VIP is discontinued, all VIP code has been removed. This will only redeem SHiFT codes going forward.
+
+Authentication uses the Gearbox SHiFT website (`shift.gearboxsoftware.com`) directly,
+following the login + redemption flow (the old `api.2k.com` Borderlands API is gone).
 
 
 ## Getting Started
@@ -22,6 +25,31 @@ This was forked from matt1484's [repo](https://github.com/matt1484/bl3_auto_vip)
 
 
 Run it with `--help` to view command line args that are supported.
+
+### Command line flags
+
+| Flag | Description |
+|---|---|
+| `-e`, `--email` | SHiFT account email (prompted if omitted) |
+| `-p`, `--password` | SHiFT account password (prompted if omitted) |
+| `--shift-code <code>` | Redeem a single SHiFT code instead of the full list |
+| `--allow-inactive` | Attempt to redeem inactive SHiFT codes too |
+| `--v1` | Force the original orcicorn code source |
+| `--v2` | Force the newer ugoogalizer/mentalmars code source |
+| `--platform <list>` | Comma-separated services to redeem on (`steam,epic,psn,xboxlive,nintendo,stadia`); default: all offered |
+| `--config <path>` | Use a local `config.json` instead of the published remote config |
+| `--dryrun` | Discover and match codes but do not redeem (no side effects) |
+| `-v`, `--verbose` | Verbose step-level logging to stderr |
+
+#### Code sources
+
+bl3auto reads SHiFT codes from two sources and, by default, uses the newer (v2)
+source and falls back to the original (v1) source only if v2 is unavailable:
+
+- **v2** (default) — [ugoogalizer/autoshift-codes](https://github.com/ugoogalizer/autoshift-codes) (`shiftcodes.json`, includes Borderlands 4)
+- **v1** — [jauderho/shift-codes](https://github.com/jauderho/shift-codes) (orcicorn `index.json`)
+
+Use `--v1` or `--v2` to force a single source.
 
 ### Installing
 
