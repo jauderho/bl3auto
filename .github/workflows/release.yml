@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: 1.21.x
+  GO_VERSION: 1.26.x
 
 permissions: read-all
 
@@ -15,7 +15,7 @@ jobs:
     name: Release
     strategy:
       matrix:
-        platform: [ubuntu-24.04]
+        platform: [ubuntu-26.04]
     permissions:
       id-token: write
       contents: write
