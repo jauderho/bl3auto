@@ -428,6 +428,55 @@ func TestGetShiftCodesAndFailover(t *testing.T) {
 	}
 }
 
+func TestGetShiftCodesV2AllowInactive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, v2Fixture) // 3 entries, 1 flagged expired
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+	c.Config.Shift.CodeListUrlV2 = srv.URL + "/v2.json"
+
+	// Default: expired codes are dropped.
+	if codes, err := c.GetShiftCodesV2(); err != nil || len(codes) != 2 {
+		t.Errorf("default: expected 2 non-expired codes, got %d (err=%v)", len(codes), err)
+	}
+
+	// AllowInactive: expired codes are included.
+	c.Config.Shift.AllowInactive = true
+	if codes, err := c.GetShiftCodesV2(); err != nil || len(codes) != 3 {
+		t.Errorf("allow-inactive: expected 3 codes incl. expired, got %d (err=%v)", len(codes), err)
+	}
+}
+
+func TestRedemptionTokenCaching(t *testing.T) {
+	var tokenHits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/code_redemptions/new":
+			tokenHits++
+			_, _ = io.WriteString(w, metaTokenPage)
+		case "/entitlement_offer_codes":
+			_, _ = io.WriteString(w, redemptionFormHTML(r.URL.Query().Get("code"), "steam"))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+
+	for _, code := range []string{"CODE1", "CODE2", "CODE3"} {
+		if _, _, err := c.GetCodeRedemptionForms(code); err != nil {
+			t.Fatalf("GetCodeRedemptionForms(%s): %v", code, err)
+		}
+	}
+	if tokenHits != 1 {
+		t.Errorf("expected the CSRF token endpoint to be fetched once, got %d hits", tokenHits)
+	}
+	if c.csrfToken != "test-token-12345" {
+		t.Errorf("token not cached on client, got %q", c.csrfToken)
+	}
+}
+
 // --- small helpers -------------------------------------------------------
 
 func TestAbsoluteUrl(t *testing.T) {

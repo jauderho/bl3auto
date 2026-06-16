@@ -165,8 +165,9 @@ func fetchBytes(rawurl string) ([]byte, error) {
 
 type Bl3Client struct {
 	HttpClient
-	Config  Bl3Config
-	Verbose bool
+	Config    Bl3Config
+	Verbose   bool
+	csrfToken string // cached session CSRF token for redemption requests
 }
 
 // NewBl3Client builds a client from config. When configPath is non-empty the
@@ -231,6 +232,23 @@ func (client *Bl3Client) getCsrfToken(pageUrl string) (string, error) {
 		return token, nil
 	}
 	return "", errors.New("csrf token not found")
+}
+
+// redemptionToken returns a session CSRF token for redemption requests, fetching
+// it once from the redemption page and caching it. The token is sent only as the
+// X-CSRF-Token header on GET requests (which Rails does not CSRF-validate), so a
+// single cached value is reused for the whole run; each redemption POST uses the
+// per-form authenticity_token instead.
+func (client *Bl3Client) redemptionToken() (string, error) {
+	if client.csrfToken != "" {
+		return client.csrfToken, nil
+	}
+	token, err := client.getCsrfToken(client.Config.BaseUrl + "/code_redemptions/new")
+	if err != nil {
+		return "", err
+	}
+	client.csrfToken = token
+	return token, nil
 }
 
 // Login authenticates against the GearBox SHiFT website: fetch the login page

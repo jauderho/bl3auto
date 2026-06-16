@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## v2.3.0 - 2026-06-16
+### Changed
+* Fixed authentication after Gearbox retired the `api.2k.com` Borderlands API.
+  Login and redemption now use the Gearbox SHiFT website
+  (`shift.gearboxsoftware.com`): CSRF login, then per-service redemption forms
+  with async status polling.
+### Added
+* Borderlands 4 SHiFT code support.
+* Two code-list formats with dedicated parsers: v2
+  (ugoogalizer/mentalmars `shiftcodes.json`, default) and v1 (orcicorn
+  `index.json`). Redemption uses v2 and falls back to v1 if v2 is unavailable.
+* New flags: `--v1`, `--v2`, `--platform`, `--config`, `--dryrun`, `-v/--verbose`,
+  and a documented `--help`.
+* `--allow-inactive` now includes codes flagged as expired in the v2 source.
+
 ## v2.2.13 - 2022-01-18
 ### Added
 * Use goreleaser to build & release

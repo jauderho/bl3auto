@@ -67,14 +67,14 @@ func parseCodeList(body []byte, dropExpired bool) []ShiftCode {
 	return codes
 }
 
-// GetShiftCodesV2 fetches and parses the newer ugoogalizer/mentalmars format,
-// filtering out codes flagged as expired.
+// GetShiftCodesV2 fetches and parses the newer ugoogalizer/mentalmars format.
+// Codes flagged as expired are filtered out unless AllowInactive is set.
 func (client *Bl3Client) GetShiftCodesV2() ([]ShiftCode, error) {
 	body, err := fetchBytes(client.Config.Shift.CodeListUrlV2)
 	if err != nil {
 		return nil, errors.New("failed to get v2 SHiFT code list: " + err.Error())
 	}
-	return parseCodeList(body, true), nil
+	return parseCodeList(body, !client.Config.Shift.AllowInactive), nil
 }
 
 // GetShiftCodesV1 fetches and parses the original orcicorn format. This format
@@ -155,7 +155,7 @@ func ServiceMatches(filter []string, service string) bool {
 // returns an empty slice and a human-readable reason (already redeemed, expired,
 // not available for this account, ...).
 func (client *Bl3Client) GetCodeRedemptionForms(code string) ([]RedemptionForm, string, error) {
-	token, err := client.getCsrfToken(client.Config.BaseUrl + "/code_redemptions/new")
+	token, err := client.redemptionToken()
 	if err != nil {
 		return nil, "", errors.New("failed to get redemption token (are you logged in?): " + err.Error())
 	}
@@ -271,7 +271,7 @@ func (client *Bl3Client) resolveRedemption(res *HttpResponse) error {
 // pollRedemptionStatus polls the async status endpoint until it reports a result
 // (or times out). The endpoint returns JSON with a "text" field once resolved.
 func (client *Bl3Client) pollRedemptionStatus(dataUrl string) error {
-	token, _ := client.getCsrfToken(client.Config.BaseUrl + "/code_redemptions/new")
+	token, _ := client.redemptionToken()
 	full := client.absoluteUrl(dataUrl)
 
 	for range 6 {

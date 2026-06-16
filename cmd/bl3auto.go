@@ -68,7 +68,7 @@ Flags:
   -e, --email <email>     SHiFT account email (prompted if omitted)
   -p, --password <pw>     SHiFT account password (prompted if omitted)
       --shift-code <code> Redeem a single SHiFT code instead of the full list
-      --allow-inactive    Attempt to redeem inactive SHiFT codes too
+      --allow-inactive    Also attempt codes flagged as expired/inactive (v2 source)
       --v1                Force the original orcicorn code source
       --v2                Force the newer ugoogalizer/mentalmars code source
       --platform <list>   Comma-separated services to redeem on; default: all offered
@@ -261,7 +261,7 @@ func main() {
 	flag.StringVar(&password, "p", "", "SHiFT account password")
 	flag.StringVar(&password, "password", "", "SHiFT account password")
 	flag.StringVar(&singleShiftCode, "shift-code", "", "Redeem a single SHiFT code instead of the full list")
-	flag.BoolVar(&allowInactive, "allow-inactive", false, "Attempt to redeem inactive SHiFT codes too")
+	flag.BoolVar(&allowInactive, "allow-inactive", false, "Also attempt codes flagged as expired/inactive (v2 source)")
 	flag.BoolVar(&useV1, "v1", false, "Force the original orcicorn code source")
 	flag.BoolVar(&useV2, "v2", false, "Force the newer ugoogalizer/mentalmars code source")
 	flag.StringVar(&platform, "platform", "", "Comma-separated services to redeem on (default: all offered)")
