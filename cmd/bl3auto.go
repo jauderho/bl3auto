@@ -59,7 +59,7 @@ type shiftOptions struct {
 
 func usage() {
 	out := flag.CommandLine.Output()
-	fmt.Fprintf(out, `bl3auto - automatically redeem Gearbox SHiFT codes
+	_, _ = fmt.Fprintf(out, `bl3auto - automatically redeem Gearbox SHiFT codes
 
 Usage:
   bl3auto [flags]

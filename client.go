@@ -208,7 +208,7 @@ func NewBl3Client(configPath string) (*Bl3Client, error) {
 
 func (client *Bl3Client) logf(format string, args ...any) {
 	if client.Verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(os.Stderr, "[verbose] "+format+"\n", args...)
 	}
 }
 
