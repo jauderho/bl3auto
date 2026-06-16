@@ -186,6 +186,11 @@ func (client *HttpClient) PostForm(rawurl string, data url.Values, headers map[s
 // fetchBytes retrieves a public URL using the default (redirect-following) HTTP
 // client. Used for the remote config and SHiFT code lists hosted on GitHub raw,
 // which may 302 to a CDN and so cannot use the no-redirect SHiFT client.
+//
+// Accept-Encoding is deliberately left unset: Go's transport then adds
+// "Accept-Encoding: gzip" automatically and transparently decompresses the
+// response, so the ~234 KB code list is fetched gzip-compressed for free.
+// Setting the header manually would disable that automatic decompression.
 func fetchBytes(rawurl string) ([]byte, error) {
 	resp, err := http.Get(rawurl) //nolint:gosec // URLs come from trusted config
 	if err != nil {

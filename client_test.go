@@ -1,6 +1,7 @@
 package bl3auto
 
 import (
+	"compress/gzip"
 	"errors"
 	"io"
 	"net/http"
@@ -136,6 +137,33 @@ func TestFetchBytes(t *testing.T) {
 	}
 	if _, err := fetchBytes("http://127.0.0.1:0/nope"); err == nil {
 		t.Error("fetchBytes should error on bad host")
+	}
+}
+
+// TestFetchBytesGzip proves the code-list download is gzip-efficient: Go's
+// transport requests gzip automatically (since we don't set Accept-Encoding)
+// and transparently decompresses the response.
+func TestFetchBytesGzip(t *testing.T) {
+	var sawAcceptEncoding string
+	const payload = "the shift code list, hypothetically large and compressible"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAcceptEncoding = r.Header.Get("Accept-Encoding")
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		_, _ = gz.Write([]byte(payload))
+		_ = gz.Close()
+	}))
+	defer srv.Close()
+
+	b, err := fetchBytes(srv.URL)
+	if err != nil {
+		t.Fatalf("fetchBytes: %v", err)
+	}
+	if !strings.Contains(sawAcceptEncoding, "gzip") {
+		t.Errorf("client should request gzip, got Accept-Encoding=%q", sawAcceptEncoding)
+	}
+	if string(b) != payload {
+		t.Errorf("body should be transparently decompressed, got %q", string(b))
 	}
 }
 

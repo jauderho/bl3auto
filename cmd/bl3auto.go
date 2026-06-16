@@ -52,14 +52,23 @@ var (
 	rateLimitRetries  = 5                      // give up (stop the run) after this many
 )
 
-// withBackoff runs op, retrying with exponential backoff while it reports
-// ErrRateLimited. It returns the final error and stop=true when the rate limit
-// persisted past rateLimitRetries, signalling the caller to halt the run.
-func withBackoff(op func() error) (err error, stop bool) {
+// bulkThreshold is the candidate-code count at or above which a run is treated
+// as "bulk": only then do we pace requests and back off on rate limits. A
+// single --shift-code redemption stays fast and un-throttled.
+const bulkThreshold = 5
+
+// withBackoff runs op. When retry is true and op reports ErrRateLimited, it
+// retries with exponential backoff and returns stop=true if the limit persists
+// past rateLimitRetries (the caller should then halt the run). When retry is
+// false (small/non-bulk runs) a rate-limit error is returned as-is.
+func withBackoff(retry bool, op func() error) (err error, stop bool) {
 	wait := rateLimitBaseWait
 	for attempt := 1; ; attempt++ {
 		err = op()
 		if err == nil || !errors.Is(err, bl3.ErrRateLimited) {
+			return err, false
+		}
+		if !retry {
 			return err, false
 		}
 		if attempt > rateLimitRetries {
@@ -158,26 +167,42 @@ func summarize(s string) string {
 	return joined
 }
 
-func loadRedeemedCodes(configDirs configdir.ConfigDir, configFilename string) bl3.ShiftCodeMap {
+// readRedeemedCodes parses the previously-redeemed-codes cache from a config
+// folder — the directory the Docker `codes/` volume maps onto. A nil folder
+// (no cache dir yet) or an unreadable/empty file yields an empty map.
+func readRedeemedCodes(folder *configdir.Config, configFilename string) bl3.ShiftCodeMap {
 	redeemedCodes := bl3.ShiftCodeMap{}
-	fmt.Print("Getting previously redeemed SHIFT codes . . . . . ")
-	folder := configDirs.QueryFolderContainsFile(configFilename)
 	if folder == nil {
-		fmt.Println(NOTFOUND)
 		return redeemedCodes
 	}
 	data, err := folder.ReadFile(configFilename)
 	if err != nil {
-		fmt.Println(NOTFOUND)
 		return redeemedCodes
 	}
 	if j := bl3.JsonFromBytes(data); j != nil {
 		j.Out(&redeemedCodes)
-		fmt.Println(SUCCESS)
-	} else {
-		fmt.Println(NOTFOUND)
 	}
 	return redeemedCodes
+}
+
+// writeRedeemedCodes persists the redeemed-codes cache to a config folder.
+func writeRedeemedCodes(folder *configdir.Config, configFilename string, redeemedCodes bl3.ShiftCodeMap) error {
+	data, err := json.MarshalIndent(&redeemedCodes, "", "  ")
+	if err != nil {
+		return err
+	}
+	return folder.WriteFile(configFilename, data)
+}
+
+func loadRedeemedCodes(configDirs configdir.ConfigDir, configFilename string) bl3.ShiftCodeMap {
+	fmt.Print("Getting previously redeemed SHIFT codes . . . . . ")
+	folder := configDirs.QueryFolderContainsFile(configFilename)
+	if folder == nil {
+		fmt.Println(NOTFOUND)
+		return bl3.ShiftCodeMap{}
+	}
+	fmt.Println(SUCCESS)
+	return readRedeemedCodes(folder, configFilename)
 }
 
 func doShift(client *bl3.Bl3Client, opts shiftOptions) {
@@ -206,6 +231,13 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 		fmt.Println(SUCCESS)
 	}
 
+	// Only pace requests and back off on rate limits for bulk runs; a single
+	// (or handful of) code(s) stays fast and un-throttled.
+	bulk := len(codes) >= bulkThreshold
+	if bulk {
+		client.SetThrottle(throttleBase, throttleJitter)
+	}
+
 	redeemedAny := false
 	cacheDirty := false
 	rateLimited := false
@@ -216,7 +248,7 @@ codeLoop:
 
 		var forms []bl3.RedemptionForm
 		var reason string
-		err, stop := withBackoff(func() error {
+		err, stop := withBackoff(bulk, func() error {
 			var e error
 			forms, reason, e = client.GetCodeRedemptionForms(code)
 			return e
@@ -253,7 +285,7 @@ codeLoop:
 			}
 
 			fmt.Print("Trying '" + form.Service + "' SHIFT code '" + code + DOTDOTDOT)
-			rerr, stop := withBackoff(func() error { return client.RedeemForm(form) })
+			rerr, stop := withBackoff(bulk, func() error { return client.RedeemForm(form) })
 			if stop {
 				fmt.Println("rate limited.")
 				rateLimited = true
@@ -287,11 +319,8 @@ codeLoop:
 
 	if cacheDirty && !opts.dryrun {
 		folders := configDirs.QueryFolders(configdir.Global)
-		data, err := json.MarshalIndent(&redeemedCodes, "", "  ")
-		if err == nil {
-			if werr := folders[0].WriteFile(configFilename, data); werr != nil {
-				printError(werr)
-			}
+		if err := writeRedeemedCodes(folders[0], configFilename, redeemedCodes); err != nil {
+			printError(err)
 		}
 	}
 }
@@ -372,7 +401,6 @@ func main() {
 	}
 	client.Verbose = verbose
 	client.Config.Shift.AllowInactive = allowInactive
-	client.SetThrottle(throttleBase, throttleJitter)
 	fmt.Println(SUCCESS)
 
 	if client.Config.Version != version {

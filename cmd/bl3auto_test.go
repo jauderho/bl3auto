@@ -13,22 +13,56 @@ import (
 	"time"
 
 	bl3 "github.com/jauderho/bl3auto"
+	"github.com/shibukawa/configdir"
 )
 
-// shrinkBackoff sets tiny rate-limit timings for the duration of a test.
+// shrinkBackoff sets tiny rate-limit timings (and disables pacing) for the
+// duration of a test so rate-limit paths run fast.
 func shrinkBackoff(t *testing.T, retries int) {
 	t.Helper()
 	ob, om, or := rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries
+	tb, tj := throttleBase, throttleJitter
 	rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = time.Millisecond, time.Millisecond, retries
-	t.Cleanup(func() { rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = ob, om, or })
+	throttleBase, throttleJitter = 0, 0
+	t.Cleanup(func() {
+		rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = ob, om, or
+		throttleBase, throttleJitter = tb, tj
+	})
+}
+
+func TestRedeemedCodesRoundTrip(t *testing.T) {
+	folder := &configdir.Config{Path: t.TempDir(), Type: configdir.Global}
+	const fn = "test-shift-codes.json"
+
+	// No codes/ dir at all (nil folder) → empty map.
+	if got := readRedeemedCodes(nil, fn); len(got) != 0 {
+		t.Errorf("nil folder should yield empty map, got %v", got)
+	}
+	// codes/ dir exists but has no cache file yet → empty map.
+	if got := readRedeemedCodes(folder, fn); len(got) != 0 {
+		t.Errorf("missing file should yield empty map, got %v", got)
+	}
+
+	// Write then read back through the codes/ folder.
+	want := bl3.ShiftCodeMap{"ABCDE-FGHIJ": {"steam", "epic"}}
+	if err := writeRedeemedCodes(folder, fn, want); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if !folder.Exists(fn) {
+		t.Fatalf("expected %s to exist in the codes folder after write", fn)
+	}
+	got := readRedeemedCodes(folder, fn)
+	if !got.Contains("ABCDE-FGHIJ", "steam") || !got.Contains("ABCDE-FGHIJ", "epic") {
+		t.Errorf("round-trip mismatch: %v", got)
+	}
 }
 
 func TestWithBackoff(t *testing.T) {
 	shrinkBackoff(t, 3)
 
-	// Rate-limited a few times, then succeeds.
+	// Bulk: rate-limited a few times, then succeeds.
 	calls := 0
-	err, stop := withBackoff(func() error {
+	err, stop := withBackoff(true, func() error {
 		calls++
 		if calls < 3 {
 			return fmt.Errorf("%w", bl3.ErrRateLimited)
@@ -39,15 +73,22 @@ func TestWithBackoff(t *testing.T) {
 		t.Errorf("retry-then-success: err=%v stop=%v calls=%d", err, stop, calls)
 	}
 
-	// Persistent rate limiting → stop.
-	if _, stop := withBackoff(func() error { return fmt.Errorf("%w", bl3.ErrRateLimited) }); !stop {
+	// Bulk: persistent rate limiting → stop.
+	if _, stop := withBackoff(true, func() error { return fmt.Errorf("%w", bl3.ErrRateLimited) }); !stop {
 		t.Error("persistent rate limit should signal stop")
+	}
+
+	// Non-bulk: a rate-limit error is returned immediately, no retry, no stop.
+	calls = 0
+	err, stop = withBackoff(false, func() error { calls++; return fmt.Errorf("%w", bl3.ErrRateLimited) })
+	if stop || !errors.Is(err, bl3.ErrRateLimited) || calls != 1 {
+		t.Errorf("non-bulk: stop=%v err=%v calls=%d", stop, err, calls)
 	}
 
 	// A non-rate-limit error returns immediately without retrying.
 	calls = 0
 	sentinel := errors.New("boom")
-	err, stop = withBackoff(func() error { calls++; return sentinel })
+	err, stop = withBackoff(true, func() error { calls++; return sentinel })
 	if stop || !errors.Is(err, sentinel) || calls != 1 {
 		t.Errorf("passthrough: stop=%v err=%v calls=%d", stop, err, calls)
 	}
@@ -55,19 +96,28 @@ func TestWithBackoff(t *testing.T) {
 
 func TestDoShiftRateLimitStops(t *testing.T) {
 	shrinkBackoff(t, 1)
+	// A full-list (bulk) run: 6 codes triggers the bulk threshold so backoff
+	// applies; the entitlement endpoint always rate-limits.
+	bulkList := `[{"meta":{},"codes":[` +
+		`{"code":"C1","expired":false},{"code":"C2","expired":false},` +
+		`{"code":"C3","expired":false},{"code":"C4","expired":false},` +
+		`{"code":"C5","expired":false},{"code":"C6","expired":false}]}]`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/code_redemptions/new" {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, bulkList)
+		case "/code_redemptions/new":
 			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
-			return
+		default:
+			w.WriteHeader(http.StatusTooManyRequests)
 		}
-		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer srv.Close()
 	usernameHash = "unittest-doshift"
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
-		doShift(c, shiftOptions{singleShiftCode: "X", dryrun: true})
+		doShift(c, shiftOptions{dryrun: true}) // no single code -> full list -> bulk
 	})
 	if !strings.Contains(out, "Stopped early") {
 		t.Errorf("expected rate-limit stop message, got:\n%s", out)
@@ -133,6 +183,8 @@ func newDoShiftClient(t *testing.T, baseURL string) *bl3.Bl3Client {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	cfg := `{"baseUrl":"` + baseURL + `","shiftConfig":{` +
+		`"codeListUrlV2":"` + baseURL + `/v2.json",` +
+		`"codeListUrlV1":"` + baseURL + `/v1.json",` +
 		`"redemptionInfoUrl":"` + baseURL + `/entitlement_offer_codes",` +
 		`"redemptionUrl":"` + baseURL + `/code_redemptions"}}`
 	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
