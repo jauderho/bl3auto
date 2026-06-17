@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -102,7 +103,7 @@ func TestDoShiftCachesAcrossRuns(t *testing.T) {
 	c := newDoShiftClient(t, srv.URL)
 
 	// Run 1: a fresh cache, so every code (on both services) is redeemed.
-	out1 := captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	out1 := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 	if got := strings.Count(out1, "Trying "); got != n*2 {
 		t.Errorf("run 1 should attempt %d redemptions, got %d:\n%s", n*2, got, out1)
 	}
@@ -118,12 +119,88 @@ func TestDoShiftCachesAcrossRuns(t *testing.T) {
 	}
 
 	// Run 2: everything is cached, so nothing is attempted.
-	out2 := captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	out2 := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 	if strings.Contains(out2, "Trying ") {
 		t.Errorf("run 2 should skip all cached codes, but attempted a redemption:\n%s", out2)
 	}
 	if !strings.Contains(out2, "No new SHIFT codes") {
 		t.Errorf("run 2 should report no new codes, got:\n%s", out2)
+	}
+}
+
+func TestSleepCtxInterrupted(t *testing.T) {
+	// A live context: a short sleep completes and returns true.
+	if !sleepCtx(context.Background(), time.Millisecond) {
+		t.Error("sleepCtx with a live context should return true")
+	}
+	// A cancelled context: returns false promptly without waiting out d.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if sleepCtx(ctx, time.Hour) {
+		t.Error("sleepCtx with a cancelled context should return false")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("sleepCtx should abort promptly on cancel, took %s", elapsed)
+	}
+	// Zero/negative duration reflects the live/cancelled context state.
+	if !sleepCtx(context.Background(), 0) {
+		t.Error("sleepCtx(ctx,0) on a live context should return true")
+	}
+	if sleepCtx(ctx, 0) {
+		t.Error("sleepCtx(ctx,0) on a cancelled context should return false")
+	}
+}
+
+// TestDoShiftInterruptSavesProgress: a Ctrl-C (context cancel) mid-run stops
+// cleanly between codes and the cache holds what was redeemed so far.
+func TestDoShiftInterruptSavesProgress(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-interrupt"
+	useTempCache(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	listJSON := rampupListJSON(5)
+	queries := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			queries++
+			code := r.URL.Query().Get("code")
+			for _, svc := range []string{"steam", "epic"} {
+				_, _ = io.WriteString(w, `<form class="new_archway_code_redemption" id="new_archway_code_redemption">`+
+					`<input id="archway_code_redemption_service" name="archway_code_redemption[service]" value="`+svc+`">`+
+					`<input name="archway_code_redemption[code]" value="`+code+`"></form>`)
+			}
+		case "/code_redemptions":
+			_, _ = io.WriteString(w, `<div class="alert">Your code was successfully redeemed</div>`)
+			cancel() // simulate Ctrl-C once the first redemption lands
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(ctx, c, shiftOptions{}) })
+	if !strings.Contains(out, "Interrupted") {
+		t.Errorf("expected the interrupted message, got:\n%s", out)
+	}
+	// Only the first code was queried before the interrupt was observed at the
+	// top of the next iteration.
+	if queries != 1 {
+		t.Errorf("expected the run to stop after the first code, got %d queries", queries)
+	}
+	cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
+	if !cached.Contains("CODE01", "steam") {
+		t.Errorf("the first code's progress should be saved, got %v", cached)
+	}
+	if _, ok := cached["CODE02"]; ok {
+		t.Errorf("the second code should not have been processed: %v", cached)
 	}
 }
 
@@ -264,7 +341,7 @@ func TestDoShiftRateLimitStops(t *testing.T) {
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
-		doShift(c, shiftOptions{dryrun: true}) // no single code -> full list -> bulk
+		doShift(context.Background(), c, shiftOptions{dryrun: true}) // no single code -> full list -> bulk
 	})
 	if !strings.Contains(out, "Stopped early") {
 		t.Errorf("expected rate-limit stop message, got:\n%s", out)
@@ -314,7 +391,7 @@ func TestRampupStopsAfterConsecutiveNon200(t *testing.T) {
 	useTempCache(t)
 	c := newDoShiftClient(t, srv.URL)
 
-	out := captureStdout(t, func() { doShift(c, shiftOptions{rampup: true}) })
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{rampup: true}) })
 
 	if queries != stopAfter {
 		t.Errorf("expected exactly %d code queries before stopping, got %d", stopAfter, queries)
@@ -362,7 +439,7 @@ func TestRampupCounterResetsOn200(t *testing.T) {
 	useTempCache(t)
 	c := newDoShiftClient(t, srv.URL)
 
-	out := captureStdout(t, func() { doShift(c, shiftOptions{rampup: true}) })
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{rampup: true}) })
 
 	if strings.Contains(out, "Stopped after") {
 		t.Errorf("counter should reset on 200 and never stop, got:\n%s", out)
@@ -390,7 +467,7 @@ func TestDoShiftBumpsLastRunAndUpgrades(t *testing.T) {
 	defer srv.Close()
 	c := newDoShiftClient(t, srv.URL)
 
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 
 	codes, lastRun, existed := readRedeemedCache(folder, fn)
 	if !existed || lastRun.IsZero() {
@@ -466,7 +543,7 @@ func TestDoShiftCountLimit(t *testing.T) {
 	defer srv.Close()
 	c := newDoShiftClient(t, srv.URL)
 
-	out := captureStdout(t, func() { doShift(c, shiftOptions{count: 2}) })
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{count: 2}) })
 
 	if got := strings.Count(out, "Trying "); got != 2 {
 		t.Errorf("--count 2 should attempt exactly 2 redemptions, got %d:\n%s", got, out)
@@ -502,7 +579,7 @@ func TestDoShiftExpiredCachedAndSkipped(t *testing.T) {
 	c := newDoShiftClient(t, srv.URL)
 
 	// Run 1: the code is queried once, found expired, and cached as such.
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 	if queries != 1 {
 		t.Fatalf("run 1 should query the code once, got %d", queries)
 	}
@@ -513,7 +590,7 @@ func TestDoShiftExpiredCachedAndSkipped(t *testing.T) {
 	}
 
 	// Run 2: the expired code is skipped outright — no further query.
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 	if queries != 1 {
 		t.Errorf("run 2 should skip the expired code (no new query), got %d total queries", queries)
 	}
@@ -587,7 +664,7 @@ func TestDoShiftMarksCompleteAndSkipsQuery(t *testing.T) {
 	c := newDoShiftClient(t, srv.URL)
 
 	// Run 1: query once, redeem steam+epic → marked complete.
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 	if *queries != 1 {
 		t.Fatalf("run 1 should query once, got %d", *queries)
 	}
@@ -597,13 +674,13 @@ func TestDoShiftMarksCompleteAndSkipsQuery(t *testing.T) {
 	}
 
 	// Run 2 (no --refresh): the complete code is skipped without a query.
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 	if *queries != 1 {
 		t.Errorf("run 2 should skip the complete code, got %d total queries", *queries)
 	}
 
 	// Run 3 (--refresh): the complete code is re-queried.
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{refresh: true}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{refresh: true}) })
 	if *queries != 2 {
 		t.Errorf("--refresh should re-query the complete code, got %d total queries", *queries)
 	}
@@ -619,7 +696,7 @@ func TestPlatformFilterDoesNotComplete(t *testing.T) {
 	defer srv.Close()
 	c := newDoShiftClient(t, srv.URL)
 
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{platformFilter: []string{"steam"}}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{platformFilter: []string{"steam"}}) })
 	cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
 	if cached.Contains("ALLCODE", completeMarker) {
 		t.Errorf("a platform-filtered run must not mark a code complete: %v", cached)
@@ -629,7 +706,7 @@ func TestPlatformFilterDoesNotComplete(t *testing.T) {
 	}
 
 	// Next run (no filter) must re-query, since epic is still pending.
-	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
 	if *queries != 2 {
 		t.Errorf("incomplete code should be re-queried, got %d total queries", *queries)
 	}
@@ -662,7 +739,7 @@ func TestBulkStopsOn302WithoutRampup(t *testing.T) {
 	defer srv.Close()
 	c := newDoShiftClient(t, srv.URL)
 
-	out := captureStdout(t, func() { doShift(c, shiftOptions{}) }) // 20 codes => bulk, no --rampup
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) }) // 20 codes => bulk, no --rampup
 	if queries != stopAfter {
 		t.Errorf("bulk run should stop after %d consecutive non-200s, got %d queries", stopAfter, queries)
 	}
@@ -685,7 +762,7 @@ func TestGameFilter(t *testing.T) {
 		srv, queries := countingShiftServer(t, listJSON)
 		defer srv.Close()
 		c := newDoShiftClient(t, srv.URL)
-		_ = captureStdout(t, func() { doShift(c, shiftOptions{gameSkip: []string{"borderlands 4"}}) })
+		_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{gameSkip: []string{"borderlands 4"}}) })
 		if *queries != 1 {
 			t.Errorf("skip-game should query only the non-skipped code, got %d", *queries)
 		}
@@ -702,7 +779,7 @@ func TestGameFilter(t *testing.T) {
 		srv, queries := countingShiftServer(t, listJSON)
 		defer srv.Close()
 		c := newDoShiftClient(t, srv.URL)
-		_ = captureStdout(t, func() { doShift(c, shiftOptions{gameInclude: []string{"borderlands 3"}}) })
+		_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{gameInclude: []string{"borderlands 3"}}) })
 		if *queries != 1 {
 			t.Errorf("include-game should query only the matching code, got %d", *queries)
 		}
@@ -825,7 +902,7 @@ func TestDoShiftSingleCodeDryRun(t *testing.T) {
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
-		doShift(c, shiftOptions{singleShiftCode: "GOODCODE", dryrun: true})
+		doShift(context.Background(), c, shiftOptions{singleShiftCode: "GOODCODE", dryrun: true})
 	})
 	if !strings.Contains(out, "[dryrun] would redeem 'steam'") ||
 		!strings.Contains(out, "[dryrun] would redeem 'epic'") {
@@ -841,7 +918,7 @@ func TestDoShiftPlatformFilterDryRun(t *testing.T) {
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
-		doShift(c, shiftOptions{singleShiftCode: "GOODCODE", platformFilter: []string{"steam"}, dryrun: true})
+		doShift(context.Background(), c, shiftOptions{singleShiftCode: "GOODCODE", platformFilter: []string{"steam"}, dryrun: true})
 	})
 	if !strings.Contains(out, "would redeem 'steam'") || strings.Contains(out, "would redeem 'epic'") {
 		t.Errorf("platform filter should keep only steam, got:\n%s", out)
@@ -856,7 +933,7 @@ func TestDoShiftAlreadyRedeemedReason(t *testing.T) {
 	c := newDoShiftClient(t, srv.URL)
 
 	out := captureStdout(t, func() {
-		doShift(c, shiftOptions{singleShiftCode: "USEDCODE", dryrun: true})
+		doShift(context.Background(), c, shiftOptions{singleShiftCode: "USEDCODE", dryrun: true})
 	})
 	if !strings.Contains(strings.ToLower(out), "already been redeemed") {
 		t.Errorf("expected already-redeemed reason, got:\n%s", out)

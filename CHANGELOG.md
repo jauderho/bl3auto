@@ -55,6 +55,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * The cache now lives in a local `codes/` directory when one exists in the working
   directory (the same path the Docker image mounts), so a native run from the project
   directory shares the cache instead of using the per-user OS config dir.
+* Crash- and Ctrl-C-safe progress: a SIGINT/SIGTERM stops the run cleanly between codes
+  with progress saved, and the cache is also checkpointed periodically mid-run so a hard
+  crash loses at most a handful of redemptions instead of the whole run.
 
 ## v2.2.13 - 2022-01-18
 ### Added

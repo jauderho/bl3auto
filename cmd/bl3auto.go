@@ -35,6 +35,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -42,9 +43,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	bl3 "github.com/jauderho/bl3auto"
@@ -85,6 +88,28 @@ var (
 // as "bulk": only then do we pace requests and back off on rate limits. A
 // single --shift-code redemption stays fast and un-throttled.
 const bulkThreshold = 5
+
+// checkpointEvery is how often (in new successful redemptions) the cache is
+// flushed mid-run, bounding progress lost to a hard crash (e.g. kill -9) where
+// the interrupt handler never runs. A var so tests can shrink it.
+var checkpointEvery = 10
+
+// sleepCtx sleeps for d, returning false if the context is cancelled first
+// (e.g. the user pressed Ctrl-C). Used for the long loop-level backoff sleeps so
+// an interrupt aborts promptly instead of waiting out the backoff.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
 
 // resolveCacheFolder returns the folder that stores the redeemed-codes cache.
 // It prefers a local `codes/` directory in the working directory when one exists —
@@ -427,7 +452,7 @@ func runMigrate() {
 	fmt.Printf("Migrated %d codes to cache version %d (in place).\n", len(codes), cacheVersion)
 }
 
-func doShift(client *bl3.Bl3Client, opts shiftOptions) {
+func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) {
 	cacheFolder := resolveCacheFolder()
 	configFilename := usernameHash + "-shift-codes.json"
 	redeemedCodes, lastRun, existed := loadRedeemedCodes(cacheFolder, configFilename)
@@ -497,12 +522,20 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 	rateLimited := false
 	stoppedShadowban := false
 	reachedCount := false
+	interrupted := false
 	consecutive := 0  // consecutive non-200 code-query responses (see --rampup)
 	successCount := 0 // new successful redemptions this run (see --count)
 
 codeLoop:
 	for _, sc := range codes {
 		code := sc.Code
+
+		// Bail out cleanly between codes if the user interrupted (Ctrl-C); the
+		// end-of-run cache write below still saves progress.
+		if ctx.Err() != nil {
+			interrupted = true
+			break codeLoop
+		}
 
 		// Skip codes we've already fully resolved, without spending a query:
 		// expired (terminal), or redeemed on every linked platform (complete).
@@ -544,7 +577,10 @@ codeLoop:
 			if bulk && consecutive >= backoffAfter {
 				wait := consecutiveBackoff(consecutive)
 				fmt.Printf("         %d non-200 responses in a row; backing off %s . . .\n", consecutive, wait)
-				time.Sleep(wait)
+				if !sleepCtx(ctx, wait) {
+					interrupted = true
+					break codeLoop
+				}
 			}
 			continue
 		}
@@ -607,6 +643,13 @@ codeLoop:
 				redeemedCodes[code] = append(redeemedCodes[code], form.Service)
 				fmt.Println(SUCCESS)
 				successCount++
+				// Checkpoint periodically so a hard crash (kill -9) loses at most
+				// checkpointEvery redemptions rather than the whole run.
+				if !opts.dryrun && checkpointEvery > 0 && successCount%checkpointEvery == 0 {
+					if err := writeRedeemedCache(cacheFolder, configFilename, redeemedCodes, time.Now()); err != nil {
+						printError(err)
+					}
+				}
 				if opts.count > 0 && successCount >= opts.count {
 					reachedCount = true
 					break codeLoop
@@ -623,6 +666,8 @@ codeLoop:
 	}
 
 	switch {
+	case interrupted:
+		fmt.Println("Interrupted. Progress saved; re-run to continue.")
 	case reachedCount:
 		fmt.Printf("Reached the --count limit of %d successful redemption(s). Progress saved; re-run to continue.\n", opts.count)
 	case stoppedShadowban:
@@ -768,7 +813,12 @@ func main() {
 	}
 	fmt.Println(SUCCESS)
 
-	doShift(client, shiftOptions{
+	// A Ctrl-C (or SIGTERM) during a long, throttled run should stop cleanly and
+	// save progress rather than discard the whole run.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	doShift(ctx, client, shiftOptions{
 		source:          source,
 		singleShiftCode: singleShiftCode,
 		platformFilter:  platformFilter,

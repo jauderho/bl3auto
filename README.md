@@ -85,7 +85,10 @@ Use `--v1` or `--v2` to force a single source.
 #### Redeemed-codes cache
 
 bl3auto remembers what it has already redeemed (and which codes are expired) in a
-per-account JSON file so it doesn't reattempt them. Codes redeemed on every linked
+per-account JSON file so it doesn't reattempt them. Progress is crash-safe: pressing
+Ctrl-C stops the run cleanly with what's been redeemed saved, and the cache is also
+checkpointed periodically during a run, so an interruption never forces you to re-query
+everything (which would only trip SHiFT's rate limit faster). Codes redeemed on every linked
 platform — and expired codes — are skipped without even a query on later runs to cut
 request volume; if you link a new platform on your SHiFT account, run with `--refresh`
 once so those codes are re-checked. If a `codes/` directory exists in
