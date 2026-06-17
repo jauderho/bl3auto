@@ -62,6 +62,11 @@ project adheres to [Semantic Versioning](https://semver.org/).
   spacing now self-tunes — it widens multiplicatively on each non-200 code query (SHiFT's
   throttle signal) and narrows again after a clean streak, converging on the fastest rate
   SHiFT tolerates without tripping the rate limit. `-v` prints the interval as it adapts.
+* Rate-limit backoff now honours a server `Retry-After` header (429/503 and 302) instead
+  of always guessing an exponential wait.
+* A query redirect to the sign-in page is now recognised as a lost session rather than a
+  throttle: the run stops immediately with a "session expired" message instead of backing
+  off pointlessly and counting toward the shadowban stop.
 
 ## v2.2.13 - 2022-01-18
 ### Added

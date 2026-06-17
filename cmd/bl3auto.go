@@ -153,8 +153,17 @@ func withBackoff(retry bool, op func() error) (err error, stop bool) {
 		if attempt > rateLimitRetries {
 			return err, true
 		}
-		fmt.Printf("Rate limited by SHiFT; backing off %s (retry %d/%d) . . .\n", wait, attempt, rateLimitRetries)
-		time.Sleep(wait)
+		// Honour a server-specified Retry-After when present, capped at the ceiling;
+		// otherwise use the exponential backoff.
+		sleep := wait
+		var rle *bl3.RateLimitError
+		if errors.As(err, &rle) && rle.RetryAfter > 0 {
+			if sleep = rle.RetryAfter; sleep > rateLimitMaxWait {
+				sleep = rateLimitMaxWait
+			}
+		}
+		fmt.Printf("Rate limited by SHiFT; backing off %s (retry %d/%d) . . .\n", sleep, attempt, rateLimitRetries)
+		time.Sleep(sleep)
 		if wait *= 2; wait > rateLimitMaxWait {
 			wait = rateLimitMaxWait
 		}
@@ -252,6 +261,19 @@ func matchesGame(include, skip []string, game string) bool {
 		}
 	}
 	return false
+}
+
+// isAuthRedirect reports whether a redirect Location means our SHiFT session is
+// gone (bounced to sign in) rather than a throttle. SHiFT's throttle 302 points at
+// /home, so /home is deliberately excluded — only unambiguous sign-in markers count.
+func isAuthRedirect(loc string) bool {
+	if loc == "" {
+		return false
+	}
+	l := strings.ToLower(loc)
+	return strings.Contains(l, "/login") ||
+		strings.Contains(l, "/sessions") ||
+		strings.Contains(l, "redirect_to=false")
 }
 
 // accountPlatforms returns the sorted set of real services (platforms) seen in the
@@ -533,6 +555,7 @@ func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) {
 	redeemedAny := false
 	rateLimited := false
 	stoppedShadowban := false
+	sessionExpired := false
 	reachedCount := false
 	interrupted := false
 	consecutive := 0  // consecutive non-200 code-query responses (see --rampup)
@@ -581,6 +604,12 @@ codeLoop:
 		// clearly a shadowban. A clean (200) response resets the counter.
 		var statusErr *bl3.CodeQueryStatusError
 		if errors.As(err, &statusErr) {
+			// A redirect to sign in means our session is gone, not a throttle:
+			// backing off won't help, so stop and tell the user to re-run.
+			if isAuthRedirect(statusErr.Location) {
+				sessionExpired = true
+				break codeLoop
+			}
 			consecutive++
 			cleanStreak = 0
 			if bulk {
@@ -596,7 +625,11 @@ codeLoop:
 				break codeLoop
 			}
 			if bulk && consecutive >= backoffAfter {
-				wait := consecutiveBackoff(consecutive)
+				// Prefer the server's Retry-After when it sent one.
+				wait := statusErr.RetryAfter
+				if wait <= 0 {
+					wait = consecutiveBackoff(consecutive)
+				}
 				fmt.Printf("         %d non-200 responses in a row; backing off %s . . .\n", consecutive, wait)
 				if !sleepCtx(ctx, wait) {
 					interrupted = true
@@ -702,6 +735,8 @@ codeLoop:
 		fmt.Println("Interrupted. Progress saved; re-run to continue.")
 	case reachedCount:
 		fmt.Printf("Reached the --count limit of %d successful redemption(s). Progress saved; re-run to continue.\n", opts.count)
+	case sessionExpired:
+		fmt.Println("Your SHiFT session expired or you're not signed in. Progress saved; re-run to sign in again.")
 	case stoppedShadowban:
 		fmt.Printf("Stopped after %d consecutive non-200 responses (likely rate-limited/shadowbanned by SHiFT).\n", consecutive)
 		fmt.Println("Progress saved; wait a while and re-run with --rampup to continue.")

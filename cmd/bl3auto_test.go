@@ -806,6 +806,86 @@ func TestDoShiftSpeedsUpOnCleanStreak(t *testing.T) {
 	}
 }
 
+func TestIsAuthRedirect(t *testing.T) {
+	cases := map[string]bool{
+		"":                         false,
+		"/home":                    false, // SHiFT's throttle target, NOT a sign-in bounce
+		"/entitlement_offer_codes": false,
+		"/login":                   true,
+		"/sessions/new":            true,
+		"/home?redirect_to=false":  true,
+	}
+	for loc, want := range cases {
+		if got := isAuthRedirect(loc); got != want {
+			t.Errorf("isAuthRedirect(%q) = %v, want %v", loc, got, want)
+		}
+	}
+}
+
+// TestWithBackoffHonoursRetryAfter: a server-specified Retry-After wins over the
+// exponential backoff, so withBackoff waits the short server time, not the long
+// exponential one.
+func TestWithBackoffHonoursRetryAfter(t *testing.T) {
+	ob, om, or := rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries
+	rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = time.Hour, time.Hour, 3
+	t.Cleanup(func() { rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = ob, om, or })
+
+	calls := 0
+	start := time.Now()
+	err, stop := withBackoff(true, func() error {
+		calls++
+		if calls == 1 {
+			return &bl3.RateLimitError{Status: 429, RetryAfter: 15 * time.Millisecond}
+		}
+		return nil
+	})
+	if err != nil || stop {
+		t.Fatalf("expected success after honoring Retry-After, got err=%v stop=%v", err, stop)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("should have slept ~15ms (Retry-After), not the 1h exponential; took %s", elapsed)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 op calls, got %d", calls)
+	}
+}
+
+// TestDoShiftStopsOnSessionExpiry: a query 302 that redirects to sign in is treated
+// as a lost session (not a throttle) — the run stops immediately with a clear message
+// rather than counting toward the shadowban brake.
+func TestDoShiftStopsOnSessionExpiry(t *testing.T) {
+	shrinkBackoff(t, 1)
+	usernameHash = "unittest-session"
+	useTempCache(t)
+
+	listJSON := rampupListJSON(10)
+	queries := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			queries++
+			w.Header().Set("Location", "/sessions/new") // bounced to sign in
+			w.WriteHeader(http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+	if queries != 1 {
+		t.Errorf("session-expiry should stop on the first redirect, got %d queries", queries)
+	}
+	if !strings.Contains(out, "session expired") {
+		t.Errorf("expected the session-expiry message, got:\n%s", out)
+	}
+}
+
 // TestGameFilter: --skip-game / --game filter the candidate list before querying, so
 // codes for excluded games are never queried.
 func TestGameFilter(t *testing.T) {

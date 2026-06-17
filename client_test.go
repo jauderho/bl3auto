@@ -429,6 +429,7 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 			_, _ = io.WriteString(w, `<div class="alert">This SHiFT code has already been redeemed</div>`)
 		case r.URL.Path == "/entitlement_offer_codes" && r.URL.Query().Get("code") == "RL302":
 			w.Header().Set("Location", "/home")
+			w.Header().Set("Retry-After", "2")
 			w.WriteHeader(http.StatusFound) // soft rate-limit / shadowban
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
@@ -463,8 +464,51 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 	if _, _, err := c.GetCodeRedemptionForms("RL302"); !errors.As(err, &statusErr) || statusErr.Status != http.StatusFound {
 		t.Errorf("expected CodeQueryStatusError{302} on redirect, got %v", err)
 	}
-	if statusErr != nil && statusErr.Error() != "code query returned status 302" {
-		t.Errorf("unexpected error message: %q", statusErr.Error())
+	if statusErr != nil {
+		if statusErr.Error() != "code query returned status 302" {
+			t.Errorf("unexpected error message: %q", statusErr.Error())
+		}
+		// The redirect target and Retry-After are surfaced so the caller can tell a
+		// lost session from a throttle and honour the server's backoff.
+		if statusErr.Location != "/home" {
+			t.Errorf("expected Location /home, got %q", statusErr.Location)
+		}
+		if statusErr.RetryAfter != 2*time.Second {
+			t.Errorf("expected RetryAfter 2s, got %s", statusErr.RetryAfter)
+		}
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	mk := func(v string) http.Header {
+		h := http.Header{}
+		if v != "" {
+			h.Set("Retry-After", v)
+		}
+		return h
+	}
+	if d := parseRetryAfter(mk("")); d != 0 {
+		t.Errorf("absent header should be 0, got %s", d)
+	}
+	if d := parseRetryAfter(mk("5")); d != 5*time.Second {
+		t.Errorf("expected 5s, got %s", d)
+	}
+	if d := parseRetryAfter(mk("0")); d != 0 {
+		t.Errorf("zero seconds should be 0, got %s", d)
+	}
+	if d := parseRetryAfter(mk("-3")); d != 0 {
+		t.Errorf("negative should be 0, got %s", d)
+	}
+	if d := parseRetryAfter(mk("garbage")); d != 0 {
+		t.Errorf("garbage should be 0, got %s", d)
+	}
+	future := time.Now().Add(time.Hour).UTC().Format(http.TimeFormat)
+	if d := parseRetryAfter(mk(future)); d <= 0 || d > time.Hour+time.Minute {
+		t.Errorf("future HTTP-date should be ~1h, got %s", d)
+	}
+	past := time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat)
+	if d := parseRetryAfter(mk(past)); d != 0 {
+		t.Errorf("past HTTP-date should be 0, got %s", d)
 	}
 }
 

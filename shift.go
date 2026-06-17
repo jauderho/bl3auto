@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -176,13 +175,18 @@ func (client *Bl3Client) GetCodeRedemptionForms(code string) ([]RedemptionForm, 
 	client.logf("GET %s?code=%s -> %d", client.Config.Shift.RedemptionInfoUrl, code, res.StatusCode)
 
 	if res.StatusCode == http.StatusTooManyRequests || res.StatusCode == http.StatusServiceUnavailable {
-		return nil, "", fmt.Errorf("%w (status %d)", ErrRateLimited, res.StatusCode)
+		return nil, "", &RateLimitError{Status: res.StatusCode, RetryAfter: parseRetryAfter(res.Header)}
 	}
 	if res.StatusCode != 200 {
 		// A non-200 here is either an invalid code (e.g. 5xx) or, commonly, a 302
-		// redirect when SHiFT is soft rate-limiting / shadowbanning us. The typed
-		// error lets the caller count consecutive failures (see --rampup).
-		return nil, "", &CodeQueryStatusError{Status: res.StatusCode}
+		// redirect when SHiFT is soft rate-limiting / shadowbanning us (or bouncing
+		// us to sign in). The typed error carries the redirect target and any
+		// Retry-After so the caller can classify it and back off (see --rampup).
+		return nil, "", &CodeQueryStatusError{
+			Status:     res.StatusCode,
+			Location:   res.Header.Get("Location"),
+			RetryAfter: parseRetryAfter(res.Header),
+		}
 	}
 
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(bodyBytes))
@@ -242,8 +246,9 @@ func (client *Bl3Client) resolveRedemption(res *HttpResponse) error {
 	for range 10 {
 		switch res.StatusCode {
 		case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+			ra := parseRetryAfter(res.Header)
 			_ = res.Body.Close()
-			return fmt.Errorf("%w (status %d)", ErrRateLimited, res.StatusCode)
+			return &RateLimitError{Status: res.StatusCode, RetryAfter: ra}
 		case 301, 302, 303:
 			location := res.Header.Get("Location")
 			_ = res.Body.Close()

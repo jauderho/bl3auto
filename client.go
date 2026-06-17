@@ -23,13 +23,53 @@ import (
 // or 503 (Service Unavailable). Callers should back off rather than retry hard.
 var ErrRateLimited = errors.New("rate limited by SHiFT")
 
+// RateLimitError carries a 429/503 rate-limit response, including any Retry-After
+// the server specified so callers can honour it instead of guessing a backoff. It
+// satisfies errors.Is(err, ErrRateLimited), so existing sentinel checks keep working.
+type RateLimitError struct {
+	Status     int
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("rate limited by SHiFT (status %d)", e.Status)
+}
+
+func (e *RateLimitError) Is(target error) bool { return target == ErrRateLimited }
+
 // CodeQueryStatusError is returned by GetCodeRedemptionForms when the code-query GET
 // answers with a non-200, non-rate-limit status (commonly a 302 redirect — SHiFT's
-// soft rate-limit / shadowban signal). Callers count these to back off and stop.
-type CodeQueryStatusError struct{ Status int }
+// soft rate-limit / shadowban signal). Location is the redirect target (used to tell
+// a lost session apart from a throttle) and RetryAfter any server-specified wait.
+type CodeQueryStatusError struct {
+	Status     int
+	Location   string
+	RetryAfter time.Duration
+}
 
 func (e *CodeQueryStatusError) Error() string {
 	return fmt.Sprintf("code query returned status %d", e.Status)
+}
+
+// parseRetryAfter reads a Retry-After header (delta-seconds or HTTP-date) into a
+// duration. It returns 0 when the header is absent, malformed, or already in the past.
+func parseRetryAfter(h http.Header) time.Duration {
+	v := strings.TrimSpace(h.Get("Retry-After"))
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
+	return 0
 }
 
 // remoteConfigUrl is the location of the published runtime config. It is fetched
