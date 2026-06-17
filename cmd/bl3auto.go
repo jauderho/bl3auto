@@ -17,6 +17,8 @@
 //	                        (steam,epic,psn,xboxlive,nintendo,stadia); default: all offered
 //	    --config <path>     Use a local config.json instead of the published remote config
 //	    --dryrun            Discover and match codes but do not redeem (no side effects)
+//	    --rampup            Cautious mode for a first run / long gap: pace requests,
+//	                        back off after 5 consecutive non-200s, stop after 20
 //	-v, --verbose           Verbose step-level logging to stderr
 //	-h, --help              Show this help
 //
@@ -50,6 +52,20 @@ var (
 	rateLimitBaseWait = 2 * time.Second        // first backoff on a 429/503
 	rateLimitMaxWait  = 30 * time.Second       // backoff ceiling
 	rateLimitRetries  = 5                      // give up (stop the run) after this many
+)
+
+// --rampup tuning. Rampup is the cautious mode for a first run or after a long gap,
+// where SHiFT readily soft-rate-limits us with 302s on the code-query. It paces
+// requests much more slowly and reacts to *consecutive* non-200 responses: back off
+// after rampupBackoffAfter in a row, and stop the run after rampupStopAfter (a likely
+// shadowban). All are vars so tests can shrink them.
+var (
+	rampupThrottleBase   = 1500 * time.Millisecond // minimum spacing between requests in rampup
+	rampupThrottleJitter = 1500 * time.Millisecond // added random spacing (0..jitter)
+	rampupBackoffBase    = 5 * time.Second         // first backoff after rampupBackoffAfter
+	rampupBackoffMax     = 60 * time.Second        // backoff ceiling
+	rampupBackoffAfter   = 5                       // consecutive non-200 → start backing off
+	rampupStopAfter      = 20                      // consecutive non-200 → stop the run
 )
 
 // bulkThreshold is the candidate-code count at or above which a run is treated
@@ -103,6 +119,19 @@ type shiftOptions struct {
 	singleShiftCode string
 	platformFilter  []string
 	dryrun          bool
+	rampup          bool
+}
+
+// cacheVersion is the current on-disk schema version of the redeemed-codes cache.
+// Bump it when the layout changes so future migrations can branch on it.
+const cacheVersion = 2
+
+// redeemedCache is the versioned on-disk format of the redeemed-codes cache. Older
+// files are a bare ShiftCodeMap (no wrapper); readRedeemedCache reads both.
+type redeemedCache struct {
+	Version int              `json:"version"`
+	LastRun time.Time        `json:"lastRun"`
+	Codes   bl3.ShiftCodeMap `json:"codes"`
 }
 
 func usage() {
@@ -123,6 +152,9 @@ Flags:
                           (valid: steam, epic, psn, xboxlive, nintendo, stadia)
       --config <path>     Use a local config.json instead of the published remote config
       --dryrun            Discover and match codes but do not redeem (no side effects)
+      --rampup            Cautious mode for a first run or after a long gap: paces
+                          requests, backs off after 5 consecutive non-200 responses,
+                          and stops cleanly after 20 (likely rate-limit/shadowban)
   -v, --verbose           Verbose step-level logging to stderr
   -h, --help              Show this help
 
@@ -136,6 +168,9 @@ Examples:
 
   # See what would be redeemed without redeeming anything
   bl3auto -e you@example.com -p 'secret' --dryrun -v
+
+  # First run, or first in a long while: redeem cautiously
+  bl3auto -e you@example.com -p 'secret' --rampup
 
   # Redeem a single code on Steam only
   bl3auto -e you@example.com -p 'secret' --shift-code ABCDE-... --platform steam
@@ -173,48 +208,72 @@ func summarize(s string) string {
 	return joined
 }
 
-// readRedeemedCodes parses the previously-redeemed-codes cache from a config
-// folder — the directory the Docker `codes/` volume maps onto. A nil folder
-// (no cache dir yet) or an unreadable/empty file yields an empty map.
-func readRedeemedCodes(folder *configdir.Config, configFilename string) bl3.ShiftCodeMap {
-	redeemedCodes := bl3.ShiftCodeMap{}
+// readRedeemedCache parses the previously-redeemed-codes cache from a config folder
+// — the directory the Docker `codes/` volume maps onto. It reads both the current
+// versioned format ({version, lastRun, codes}) and the older bare-map format,
+// returning the codes, the last-run time (zero if unknown), and whether a cache file
+// existed at all. A nil folder or unreadable/empty file yields (empty, zero, false).
+func readRedeemedCache(folder *configdir.Config, configFilename string) (bl3.ShiftCodeMap, time.Time, bool) {
 	if folder == nil {
-		return redeemedCodes
+		return bl3.ShiftCodeMap{}, time.Time{}, false
 	}
 	data, err := folder.ReadFile(configFilename)
 	if err != nil {
-		return redeemedCodes
+		return bl3.ShiftCodeMap{}, time.Time{}, false
 	}
-	if j := bl3.JsonFromBytes(data); j != nil {
-		j.Out(&redeemedCodes)
+
+	// Current format: a wrapper with a "codes" key. The old bare map has no such
+	// key (SHiFT codes never look like "codes"), so Codes stays nil and we fall
+	// through to the back-compat path.
+	var cache redeemedCache
+	if json.Unmarshal(data, &cache) == nil && cache.Codes != nil {
+		return cache.Codes, cache.LastRun, true
 	}
-	return redeemedCodes
+
+	// Back-compat: an old bare ShiftCodeMap. Recency is unknown (zero time).
+	bare := bl3.ShiftCodeMap{}
+	_ = json.Unmarshal(data, &bare)
+	return bare, time.Time{}, true
 }
 
-// writeRedeemedCodes persists the redeemed-codes cache to a config folder.
-func writeRedeemedCodes(folder *configdir.Config, configFilename string, redeemedCodes bl3.ShiftCodeMap) error {
-	data, err := json.MarshalIndent(&redeemedCodes, "", "  ")
+// writeRedeemedCache persists the redeemed-codes cache in the current versioned
+// format, stamping it with the given last-run time.
+func writeRedeemedCache(folder *configdir.Config, configFilename string, codes bl3.ShiftCodeMap, lastRun time.Time) error {
+	if folder == nil {
+		return nil
+	}
+	cache := redeemedCache{Version: cacheVersion, LastRun: lastRun, Codes: codes}
+	data, err := json.MarshalIndent(&cache, "", "  ")
 	if err != nil {
 		return err
 	}
 	return folder.WriteFile(configFilename, data)
 }
 
-func loadRedeemedCodes(folder *configdir.Config, configFilename string) bl3.ShiftCodeMap {
+func loadRedeemedCodes(folder *configdir.Config, configFilename string) (bl3.ShiftCodeMap, time.Time, bool) {
 	fmt.Print("Getting previously redeemed SHIFT codes . . . . . ")
-	codes := readRedeemedCodes(folder, configFilename)
+	codes, lastRun, existed := readRedeemedCache(folder, configFilename)
 	if len(codes) == 0 {
 		fmt.Println(NOTFOUND)
 	} else {
 		fmt.Println(SUCCESS)
 	}
-	return codes
+	return codes, lastRun, existed
+}
+
+// rampupAdvised nudges toward --rampup: a likely first run (no cache), an old-format
+// cache with unknown recency, or a last run more than ~6 months ago.
+func rampupAdvised(existed bool, lastRun, now time.Time) bool {
+	if !existed || lastRun.IsZero() {
+		return true
+	}
+	return lastRun.Before(now.AddDate(0, -6, 0))
 }
 
 func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 	cacheFolder := resolveCacheFolder()
 	configFilename := usernameHash + "-shift-codes.json"
-	redeemedCodes := loadRedeemedCodes(cacheFolder, configFilename)
+	redeemedCodes, lastRun, existed := loadRedeemedCodes(cacheFolder, configFilename)
 
 	// Gather the candidate codes: a single code, or the full list from the source.
 	var codes []bl3.ShiftCode
@@ -223,6 +282,14 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 		codes = []bl3.ShiftCode{{Code: code}}
 		fmt.Println("Checking single SHIFT code '" + code + "'")
 	} else {
+		// Nudge first-time / long-absent users toward --rampup before a bulk run,
+		// where SHiFT is quick to soft-rate-limit us with 302s.
+		if !opts.rampup && rampupAdvised(existed, lastRun, time.Now()) {
+			fmt.Println("WARNING: this looks like a first run or your first in a while.")
+			fmt.Println("         SHiFT may rate-limit a large redemption. Consider re-running")
+			fmt.Println("         with --rampup to pace requests and stop cleanly if throttled.")
+		}
+
 		label := "Getting new SHIFT codes"
 		if opts.source != "" {
 			label += " (" + opts.source + ")"
@@ -237,16 +304,21 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 		fmt.Println(SUCCESS)
 	}
 
-	// Only pace requests and back off on rate limits for bulk runs; a single
-	// (or handful of) code(s) stays fast and un-throttled.
-	bulk := len(codes) >= bulkThreshold
-	if bulk {
+	// Pace requests and back off on rate limits for bulk runs; --rampup forces this
+	// on (with much more conservative spacing) regardless of how many codes there
+	// are. A single (or handful of) code(s) otherwise stays fast and un-throttled.
+	bulk := opts.rampup || len(codes) >= bulkThreshold
+	switch {
+	case opts.rampup:
+		client.SetThrottle(rampupThrottleBase, rampupThrottleJitter)
+	case bulk:
 		client.SetThrottle(throttleBase, throttleJitter)
 	}
 
 	redeemedAny := false
-	cacheDirty := false
 	rateLimited := false
+	stoppedShadowban := false
+	consecutive := 0 // consecutive non-200 code-query responses (see --rampup)
 
 codeLoop:
 	for _, sc := range codes {
@@ -263,15 +335,37 @@ codeLoop:
 			rateLimited = true
 			break codeLoop
 		}
+		// A non-200 code-query (commonly a 302) is SHiFT throttling us. In rampup we
+		// count these: back off after a few in a row, and stop cleanly once it's
+		// clearly a shadowban. A clean (200) response resets the counter.
+		var statusErr *bl3.CodeQueryStatusError
+		if errors.As(err, &statusErr) {
+			consecutive++
+			fmt.Println("Skipping '" + code + "': " + err.Error())
+			if opts.rampup && consecutive >= rampupStopAfter {
+				stoppedShadowban = true
+				break codeLoop
+			}
+			if opts.rampup && consecutive >= rampupBackoffAfter {
+				wait := rampupBackoff(consecutive)
+				fmt.Printf("         %d non-200 responses in a row; backing off %s . . .\n", consecutive, wait)
+				time.Sleep(wait)
+			}
+			continue
+		}
 		if err != nil {
 			fmt.Println("Skipping '" + code + "': " + err.Error())
 			continue
 		}
+		consecutive = 0
 		if len(forms) == 0 {
 			fmt.Println("'" + code + "': " + summarize(reason))
 			continue
 		}
 
+		// One redemption per form: the SHiFT site returns a form for each platform
+		// linked to the account, so a code is redeemed once per linked platform
+		// (--platform narrows this set).
 		for _, form := range forms {
 			if !bl3.ServiceMatches(opts.platformFilter, form.Service) {
 				continue
@@ -302,32 +396,51 @@ codeLoop:
 				low := strings.ToLower(rerr.Error())
 				if strings.Contains(low, "already") || strings.Contains(low, "expired") {
 					redeemedCodes[code] = append(redeemedCodes[code], form.Service)
-					cacheDirty = true
 				}
 			} else {
 				redeemedCodes[code] = append(redeemedCodes[code], form.Service)
-				cacheDirty = true
 				fmt.Println(SUCCESS)
 			}
 		}
 	}
 
-	if rateLimited {
+	switch {
+	case stoppedShadowban:
+		fmt.Printf("Stopped after %d consecutive non-200 responses (likely rate-limited/shadowbanned by SHiFT).\n", consecutive)
+		fmt.Println("Progress saved; wait a while and re-run with --rampup to continue.")
+	case rateLimited:
 		fmt.Println("Stopped early due to repeated SHiFT rate limiting. Progress saved; re-run later to continue.")
-	} else if !redeemedAny {
+	case !redeemedAny:
 		if opts.singleShiftCode != "" {
 			fmt.Println("The single SHIFT code could not be redeemed at this time. Try again later.")
 		} else {
 			fmt.Println("No new SHIFT codes at this time. Try again later.")
 		}
-		return
+		// Still bump lastRun below so the stale-run warning tracks this attempt.
 	}
 
-	if cacheDirty && !opts.dryrun {
-		if err := writeRedeemedCodes(cacheFolder, configFilename, redeemedCodes); err != nil {
+	// On any non-dryrun run, rewrite the cache: this persists newly-redeemed codes,
+	// bumps lastRun (powering the stale-run warning), and upgrades an old bare-map
+	// file to the current versioned format.
+	if !opts.dryrun {
+		if err := writeRedeemedCache(cacheFolder, configFilename, redeemedCodes, time.Now()); err != nil {
 			printError(err)
 		}
 	}
+}
+
+// rampupBackoff returns the escalating sleep for the Nth consecutive non-200 code
+// query in rampup mode, capped at rampupBackoffMax.
+func rampupBackoff(consecutive int) time.Duration {
+	shift := consecutive - rampupBackoffAfter
+	if shift < 0 {
+		shift = 0
+	}
+	wait := rampupBackoffBase << uint(shift)
+	if wait > rampupBackoffMax || wait <= 0 {
+		wait = rampupBackoffMax
+	}
+	return wait
 }
 
 func main() {
@@ -342,6 +455,7 @@ func main() {
 		configPath      string
 		dryrun          bool
 		verbose         bool
+		rampup          bool
 	)
 
 	flag.StringVar(&username, "e", "", "SHiFT account email")
@@ -355,6 +469,7 @@ func main() {
 	flag.StringVar(&platform, "platform", "", "Comma-separated services to redeem on (default: all offered)")
 	flag.StringVar(&configPath, "config", "", "Use a local config.json instead of the published remote config")
 	flag.BoolVar(&dryrun, "dryrun", false, "Discover and match codes but do not redeem")
+	flag.BoolVar(&rampup, "rampup", false, "Cautious mode for a first run / long gap: pace requests and stop cleanly if throttled")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose step-level logging to stderr")
 	flag.BoolVar(&verbose, "v", false, "Verbose step-level logging to stderr")
 	flag.Usage = usage
@@ -424,6 +539,7 @@ func main() {
 		singleShiftCode: singleShiftCode,
 		platformFilter:  platformFilter,
 		dryrun:          dryrun,
+		rampup:          rampup,
 	})
 
 	exit()

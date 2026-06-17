@@ -25,6 +25,15 @@ project adheres to [Semantic Versioning](https://semver.org/).
   compiled binary works without `--config` or network access. The published
   remote config is still preferred when reachable and compatible (for hot-fixes);
   an unreachable or older-schema remote config falls back to the embedded one.
+* `--rampup`: a cautious mode for a first run or after a long gap. It paces requests
+  much more conservatively, backs off after 5 consecutive non-200 code-query
+  responses (SHiFT soft-rate-limits with 302s), and stops cleanly after 20 in a row
+  (likely shadowban) with progress saved.
+* First-run / long-gap warning: when no redeemed-codes cache exists or the last run
+  was over ~6 months ago, the tool recommends re-running with `--rampup`.
+* The redeemed-codes cache is now a versioned format (`{version, lastRun, codes}`).
+  Old bare-map files are still read, and any normal run upgrades the file in place
+  and stamps `lastRun`.
 
 ## v2.2.13 - 2022-01-18
 ### Added

@@ -23,6 +23,15 @@ import (
 // or 503 (Service Unavailable). Callers should back off rather than retry hard.
 var ErrRateLimited = errors.New("rate limited by SHiFT")
 
+// CodeQueryStatusError is returned by GetCodeRedemptionForms when the code-query GET
+// answers with a non-200, non-rate-limit status (commonly a 302 redirect — SHiFT's
+// soft rate-limit / shadowban signal). Callers count these to back off and stop.
+type CodeQueryStatusError struct{ Status int }
+
+func (e *CodeQueryStatusError) Error() string {
+	return fmt.Sprintf("code query returned status %d", e.Status)
+}
+
 // remoteConfigUrl is the location of the published runtime config. It is fetched
 // at startup so the GearBox endpoints can be hot-fixed without a release. It is a
 // var so tests can point it elsewhere.

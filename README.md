@@ -39,7 +39,22 @@ Run it with `--help` to view command line args that are supported.
 | `--platform <list>` | Comma-separated services to redeem on (`steam,epic,psn,xboxlive,nintendo,stadia`); default: all offered |
 | `--config <path>` | Use a local `config.json` instead of the published remote config |
 | `--dryrun` | Discover and match codes but do not redeem (no side effects) |
+| `--rampup` | Cautious mode for a first run or after a long gap: paces requests, backs off after 5 consecutive non-200 responses, and stops cleanly after 20 (likely rate-limit/shadowban) |
 | `-v`, `--verbose` | Verbose step-level logging to stderr |
+
+> **First run, or first in a while?** SHiFT readily rate-limits a large redemption
+> (it answers with 302s once it's throttling you). Run with `--rampup` the first time,
+> or after months away, to pace requests and stop cleanly instead of getting
+> shadowbanned. bl3auto reminds you when it looks like a first or long-overdue run.
+
+#### Platforms
+
+bl3auto redeems each code on **every platform linked to your SHiFT account** — the
+site returns one redemption form per linked service, so a "universal" code is redeemed
+once per linked platform (e.g. Steam *and* Epic). To cover more platforms (PSN, Xbox,
+Nintendo, Stadia), link them once at
+[shift.gearboxsoftware.com](https://shift.gearboxsoftware.com) and bl3auto will pick
+them up automatically. Use `--platform` to narrow redemption to a subset of services.
 
 #### Code sources
 

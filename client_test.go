@@ -427,6 +427,9 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 			_, _ = io.WriteString(w, redemptionFormHTML("GOODCODE", "steam", "epic"))
 		case r.URL.Path == "/entitlement_offer_codes" && r.URL.Query().Get("code") == "USEDCODE":
 			_, _ = io.WriteString(w, `<div class="alert">This SHiFT code has already been redeemed</div>`)
+		case r.URL.Path == "/entitlement_offer_codes" && r.URL.Query().Get("code") == "RL302":
+			w.Header().Set("Location", "/home")
+			w.WriteHeader(http.StatusFound) // soft rate-limit / shadowban
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -450,8 +453,18 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 		t.Fatalf("used code: forms=%d reason=%q err=%v", len(forms), reason, err)
 	}
 
-	if _, _, err := c.GetCodeRedemptionForms("INVALID"); err == nil {
-		t.Error("expected error for 500 response")
+	// A non-200, non-rate-limit status surfaces as a typed CodeQueryStatusError
+	// carrying the status, so the caller can count consecutive failures (--rampup).
+	var statusErr *CodeQueryStatusError
+	if _, _, err := c.GetCodeRedemptionForms("INVALID"); !errors.As(err, &statusErr) || statusErr.Status != 500 {
+		t.Errorf("expected CodeQueryStatusError{500}, got %v", err)
+	}
+	statusErr = nil
+	if _, _, err := c.GetCodeRedemptionForms("RL302"); !errors.As(err, &statusErr) || statusErr.Status != http.StatusFound {
+		t.Errorf("expected CodeQueryStatusError{302} on redirect, got %v", err)
+	}
+	if statusErr != nil && statusErr.Error() != "code query returned status 302" {
+		t.Errorf("unexpected error message: %q", statusErr.Error())
 	}
 }
 

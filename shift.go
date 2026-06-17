@@ -179,8 +179,10 @@ func (client *Bl3Client) GetCodeRedemptionForms(code string) ([]RedemptionForm, 
 		return nil, "", fmt.Errorf("%w (status %d)", ErrRateLimited, res.StatusCode)
 	}
 	if res.StatusCode != 200 {
-		// A 5xx here generally means the code itself was rejected as invalid.
-		return nil, "", fmt.Errorf("code query returned status %d", res.StatusCode)
+		// A non-200 here is either an invalid code (e.g. 5xx) or, commonly, a 302
+		// redirect when SHiFT is soft rate-limiting / shadowbanning us. The typed
+		// error lets the caller count consecutive failures (see --rampup).
+		return nil, "", &CodeQueryStatusError{Status: res.StatusCode}
 	}
 
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(bodyBytes))
