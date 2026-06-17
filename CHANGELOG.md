@@ -41,6 +41,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
   Handy with `--rampup` to cap how much a single run attempts.
 * Expired codes are now recorded in the cache (terminal state) and skipped entirely
   on later runs — no repeated query or redemption attempt.
+* Codes already redeemed on every linked platform are marked complete and skipped
+  without a query on later runs, cutting request volume. `--refresh` re-queries those
+  codes to pick up a platform linked since (expired codes stay skipped regardless).
 * The cache now lives in a local `codes/` directory when one exists in the working
   directory (the same path the Docker image mounts), so a native run from the project
   directory shares the cache instead of using the per-user OS config dir.

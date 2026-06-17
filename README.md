@@ -41,6 +41,7 @@ Run it with `--help` to view command line args that are supported.
 | `--dryrun` | Discover and match codes but do not redeem (no side effects) |
 | `--rampup` | Cautious mode for a first run or after a long gap: paces requests, backs off after 5 consecutive non-200 responses, and stops cleanly after 20 (likely rate-limit/shadowban) |
 | `--count <n>` | Stop and save after `n` successful redemptions (`0` = no limit) |
+| `--refresh` | Re-query codes already redeemed on every linked platform (run after linking a new platform on your SHiFT account) |
 | `--migrate` | Upgrade the redeemed-codes cache file in place to the current version and exit (no login; `-e` selects the per-account cache) |
 | `-v`, `--verbose` | Verbose step-level logging to stderr |
 
@@ -71,7 +72,10 @@ Use `--v1` or `--v2` to force a single source.
 #### Redeemed-codes cache
 
 bl3auto remembers what it has already redeemed (and which codes are expired) in a
-per-account JSON file so it doesn't reattempt them. If a `codes/` directory exists in
+per-account JSON file so it doesn't reattempt them. Codes redeemed on every linked
+platform — and expired codes — are skipped without even a query on later runs to cut
+request volume; if you link a new platform on your SHiFT account, run with `--refresh`
+once so those codes are re-checked. If a `codes/` directory exists in
 the working directory, that file is stored there — the same path the Docker image
 mounts its volume onto — so a native run from the project directory shares the cache
 with Docker. Otherwise it falls back to the per-user OS config directory

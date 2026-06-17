@@ -20,6 +20,8 @@
 //	    --rampup            Cautious mode for a first run / long gap: pace requests,
 //	                        back off after 5 consecutive non-200s, stop after 20
 //	    --count <n>         Stop and save after n successful redemptions (0 = no limit)
+//	    --refresh           Re-query codes already redeemed on every linked platform
+//	                        (to pick up platforms linked since)
 //	    --migrate           Upgrade the redeemed-codes cache file in place and exit
 //	                        (no login); -e selects the per-account cache
 //	-v, --verbose           Verbose step-level logging to stderr
@@ -130,7 +132,8 @@ type shiftOptions struct {
 	platformFilter  []string
 	dryrun          bool
 	rampup          bool
-	count           int // stop after this many successful redemptions (0 = no limit)
+	refresh         bool // re-query codes marked complete (pick up newly-linked platforms)
+	count           int  // stop after this many successful redemptions (0 = no limit)
 }
 
 // cacheVersion is the current on-disk schema version of the redeemed-codes cache.
@@ -142,6 +145,35 @@ const cacheVersion = 2
 // entirely (no query, no redemption) on later runs. It is not a real service, so it
 // never matches a redemption form or a --platform filter.
 const expiredMarker = "expired"
+
+// completeMarker is recorded when a code has been redeemed on every platform the
+// SHiFT site offered for it (i.e. every linked platform). Such a code is skipped
+// without a query on later runs to cut request volume; --refresh re-queries it to
+// pick up platforms linked since. Like expiredMarker it is not a real service.
+const completeMarker = "complete"
+
+// markDone records a sentinel marker (expiredMarker/completeMarker) for a code,
+// avoiding duplicates.
+func markDone(m bl3.ShiftCodeMap, code, marker string) {
+	if !m.Contains(code, marker) {
+		m[code] = append(m[code], marker)
+	}
+}
+
+// allServicesRedeemed reports whether every service the site offered for a code is
+// recorded as redeemed — i.e. the code is complete for the currently-linked
+// platforms. Returns false when there are no forms.
+func allServicesRedeemed(m bl3.ShiftCodeMap, code string, forms []bl3.RedemptionForm) bool {
+	if len(forms) == 0 {
+		return false
+	}
+	for _, f := range forms {
+		if !m.Contains(code, f.Service) {
+			return false
+		}
+	}
+	return true
+}
 
 // redeemedCache is the versioned on-disk format of the redeemed-codes cache. Older
 // files are a bare ShiftCodeMap (no wrapper); readRedeemedCache reads both.
@@ -173,6 +205,8 @@ Flags:
                           requests, backs off after 5 consecutive non-200 responses,
                           and stops cleanly after 20 (likely rate-limit/shadowban)
       --count <n>         Stop and save after n successful redemptions (0 = no limit)
+      --refresh           Re-query codes already redeemed on every linked platform
+                          (use after linking a new platform on your SHiFT account)
       --migrate           Upgrade the redeemed-codes cache file in place to the
                           current version and exit (no login; -e selects the cache)
   -v, --verbose           Verbose step-level logging to stderr
@@ -379,9 +413,14 @@ codeLoop:
 	for _, sc := range codes {
 		code := sc.Code
 
-		// Codes already resolved as expired are terminal — skip them outright so we
-		// never spend a query (or a redemption) on them again.
+		// Skip codes we've already fully resolved, without spending a query:
+		// expired (terminal), or redeemed on every linked platform (complete).
+		// --refresh re-queries complete codes to detect newly-linked platforms;
+		// expired codes stay skipped regardless (they can never be redeemed again).
 		if redeemedCodes.Contains(code, expiredMarker) {
+			continue
+		}
+		if !opts.refresh && redeemedCodes.Contains(code, completeMarker) {
 			continue
 		}
 
@@ -423,7 +462,7 @@ codeLoop:
 			fmt.Println("'" + code + "': " + summarize(reason))
 			// An expired code is terminal: record it so it is never re-queried.
 			if strings.Contains(strings.ToLower(reason), "expired") {
-				redeemedCodes[code] = append(redeemedCodes[code], expiredMarker)
+				markDone(redeemedCodes, code, expiredMarker)
 			}
 			continue
 		}
@@ -464,7 +503,7 @@ codeLoop:
 				case strings.Contains(low, "expired"):
 					// Expiry is global and terminal: mark the whole code and stop
 					// trying its other platforms.
-					redeemedCodes[code] = append(redeemedCodes[code], expiredMarker)
+					markDone(redeemedCodes, code, expiredMarker)
 					break formLoop
 				case strings.Contains(low, "already"):
 					redeemedCodes[code] = append(redeemedCodes[code], form.Service)
@@ -478,6 +517,13 @@ codeLoop:
 					break codeLoop
 				}
 			}
+		}
+
+		// If the code is now redeemed on every platform the site offered (and we
+		// didn't filter any out with --platform), mark it complete so later runs
+		// skip the query entirely. Dry runs don't redeem, so they never complete.
+		if !opts.dryrun && allServicesRedeemed(redeemedCodes, code, forms) {
+			markDone(redeemedCodes, code, completeMarker)
 		}
 	}
 
@@ -535,6 +581,7 @@ func main() {
 		dryrun          bool
 		verbose         bool
 		rampup          bool
+		refresh         bool
 		migrate         bool
 		count           int
 	)
@@ -552,6 +599,7 @@ func main() {
 	flag.BoolVar(&dryrun, "dryrun", false, "Discover and match codes but do not redeem")
 	flag.BoolVar(&rampup, "rampup", false, "Cautious mode for a first run / long gap: pace requests and stop cleanly if throttled")
 	flag.IntVar(&count, "count", 0, "Stop and save after this many successful redemptions (0 = no limit)")
+	flag.BoolVar(&refresh, "refresh", false, "Re-query codes already redeemed on every linked platform (to pick up newly-linked platforms)")
 	flag.BoolVar(&migrate, "migrate", false, "Upgrade the redeemed-codes cache file in place to the current version and exit (no login)")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose step-level logging to stderr")
 	flag.BoolVar(&verbose, "v", false, "Verbose step-level logging to stderr")
@@ -630,6 +678,7 @@ func main() {
 		platformFilter:  platformFilter,
 		dryrun:          dryrun,
 		rampup:          rampup,
+		refresh:         refresh,
 		count:           count,
 	})
 

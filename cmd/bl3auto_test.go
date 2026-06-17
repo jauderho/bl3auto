@@ -547,6 +547,94 @@ func TestResolveCacheFolderPrefersLocal(t *testing.T) {
 	}
 }
 
+// countingShiftServer serves the given v2 list and offers steam+epic forms with
+// successful redemptions, counting code-query requests via the returned pointer.
+func countingShiftServer(t *testing.T, listJSON string) (*httptest.Server, *int) {
+	t.Helper()
+	queries := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			queries++
+			code := r.URL.Query().Get("code")
+			for _, svc := range []string{"steam", "epic"} {
+				_, _ = io.WriteString(w, `<form class="new_archway_code_redemption" id="new_archway_code_redemption">`+
+					`<input id="archway_code_redemption_service" name="archway_code_redemption[service]" value="`+svc+`">`+
+					`<input name="archway_code_redemption[code]" value="`+code+`"></form>`)
+			}
+		case "/code_redemptions":
+			_, _ = io.WriteString(w, `<div class="alert">Your code was successfully redeemed</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	return srv, &queries
+}
+
+// TestDoShiftMarksCompleteAndSkipsQuery: once a code is redeemed on every offered
+// platform it is marked complete and skipped (no query) next run; --refresh forces
+// a re-query.
+func TestDoShiftMarksCompleteAndSkipsQuery(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-complete"
+	useTempCache(t)
+	srv, queries := countingShiftServer(t, `[{"meta":{},"codes":[{"code":"ALLCODE","expired":false}]}]`)
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	// Run 1: query once, redeem steam+epic → marked complete.
+	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	if *queries != 1 {
+		t.Fatalf("run 1 should query once, got %d", *queries)
+	}
+	cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
+	if !cached.Contains("ALLCODE", completeMarker) {
+		t.Fatalf("code redeemed on all platforms should be marked complete: %v", cached)
+	}
+
+	// Run 2 (no --refresh): the complete code is skipped without a query.
+	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	if *queries != 1 {
+		t.Errorf("run 2 should skip the complete code, got %d total queries", *queries)
+	}
+
+	// Run 3 (--refresh): the complete code is re-queried.
+	_ = captureStdout(t, func() { doShift(c, shiftOptions{refresh: true}) })
+	if *queries != 2 {
+		t.Errorf("--refresh should re-query the complete code, got %d total queries", *queries)
+	}
+}
+
+// TestPlatformFilterDoesNotComplete: a --platform run leaves other platforms
+// un-redeemed, so the code is not marked complete and is re-queried next run.
+func TestPlatformFilterDoesNotComplete(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-filter-complete"
+	useTempCache(t)
+	srv, queries := countingShiftServer(t, `[{"meta":{},"codes":[{"code":"ALLCODE","expired":false}]}]`)
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	_ = captureStdout(t, func() { doShift(c, shiftOptions{platformFilter: []string{"steam"}}) })
+	cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
+	if cached.Contains("ALLCODE", completeMarker) {
+		t.Errorf("a platform-filtered run must not mark a code complete: %v", cached)
+	}
+	if !cached.Contains("ALLCODE", "steam") || cached.Contains("ALLCODE", "epic") {
+		t.Errorf("only steam should be redeemed under the filter: %v", cached)
+	}
+
+	// Next run (no filter) must re-query, since epic is still pending.
+	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	if *queries != 2 {
+		t.Errorf("incomplete code should be re-queried, got %d total queries", *queries)
+	}
+}
+
 func TestSummarize(t *testing.T) {
 	if got := summarize("  hello   world \n"); got != "hello world" {
 		t.Errorf("collapse whitespace: got %q", got)
