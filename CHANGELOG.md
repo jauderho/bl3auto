@@ -34,6 +34,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * The redeemed-codes cache is now a versioned format (`{version, lastRun, codes}`).
   Old bare-map files are still read, and any normal run upgrades the file in place
   and stamps `lastRun`.
+* `--migrate`: a standalone, login-free command to upgrade the redeemed-codes cache
+  file in place to the current version (`-e` selects the per-account cache). Useful
+  for explicitly converting an old file without a redemption run.
 
 ## v2.2.13 - 2022-01-18
 ### Added

@@ -407,6 +407,56 @@ func TestDoShiftBumpsLastRunAndUpgrades(t *testing.T) {
 	}
 }
 
+// TestMigrateInPlace: --migrate upgrades an old bare-map file to the versioned
+// format in place (preserving codes and the zero lastRun), and is idempotent.
+func TestMigrateInPlace(t *testing.T) {
+	cacheDir := useTempCache(t)
+	usernameHash = "unittest-migrate"
+	fn := usernameHash + "-shift-codes.json"
+	folder := &configdir.Config{Path: cacheDir, Type: configdir.Global}
+
+	if err := folder.WriteFile(fn, []byte(`{"OLD11-OLD22":["steam","epic"],"OLD33-OLD44":["steam"]}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, runMigrate)
+	if !strings.Contains(out, "Migrated 2 codes to cache version 2") {
+		t.Errorf("expected migrate summary, got:\n%s", out)
+	}
+
+	// File is now the versioned format, codes preserved, lastRun still zero.
+	data, err := folder.ReadFile(fn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"version": 2`) {
+		t.Errorf("migrated file should carry version 2:\n%s", data)
+	}
+	codes, lastRun, existed := readRedeemedCache(folder, fn)
+	if !existed || !codes.Contains("OLD11-OLD22", "epic") || !codes.Contains("OLD33-OLD44", "steam") {
+		t.Errorf("codes not preserved across migrate: %v", codes)
+	}
+	if !lastRun.IsZero() {
+		t.Errorf("migrate should preserve the unknown (zero) lastRun, got %v", lastRun)
+	}
+
+	// Idempotent: a second migrate is a no-op.
+	out = captureStdout(t, runMigrate)
+	if !strings.Contains(out, "already version 2") {
+		t.Errorf("second migrate should be a no-op, got:\n%s", out)
+	}
+}
+
+// TestMigrateNoCache: --migrate with no cache file reports nothing to do.
+func TestMigrateNoCache(t *testing.T) {
+	useTempCache(t)
+	usernameHash = "unittest-migrate-empty"
+	out := captureStdout(t, runMigrate)
+	if !strings.Contains(out, "No redeemed-codes cache to migrate") {
+		t.Errorf("expected no-cache message, got:\n%s", out)
+	}
+}
+
 func TestSummarize(t *testing.T) {
 	if got := summarize("  hello   world \n"); got != "hello world" {
 		t.Errorf("collapse whitespace: got %q", got)

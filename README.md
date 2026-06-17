@@ -40,6 +40,7 @@ Run it with `--help` to view command line args that are supported.
 | `--config <path>` | Use a local `config.json` instead of the published remote config |
 | `--dryrun` | Discover and match codes but do not redeem (no side effects) |
 | `--rampup` | Cautious mode for a first run or after a long gap: paces requests, backs off after 5 consecutive non-200 responses, and stops cleanly after 20 (likely rate-limit/shadowban) |
+| `--migrate` | Upgrade the redeemed-codes cache file in place to the current version and exit (no login; `-e` selects the per-account cache) |
 | `-v`, `--verbose` | Verbose step-level logging to stderr |
 
 > **First run, or first in a while?** SHiFT readily rate-limits a large redemption

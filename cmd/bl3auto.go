@@ -19,6 +19,8 @@
 //	    --dryrun            Discover and match codes but do not redeem (no side effects)
 //	    --rampup            Cautious mode for a first run / long gap: pace requests,
 //	                        back off after 5 consecutive non-200s, stop after 20
+//	    --migrate           Upgrade the redeemed-codes cache file in place and exit
+//	                        (no login); -e selects the per-account cache
 //	-v, --verbose           Verbose step-level logging to stderr
 //	-h, --help              Show this help
 //
@@ -155,6 +157,8 @@ Flags:
       --rampup            Cautious mode for a first run or after a long gap: paces
                           requests, backs off after 5 consecutive non-200 responses,
                           and stops cleanly after 20 (likely rate-limit/shadowban)
+      --migrate           Upgrade the redeemed-codes cache file in place to the
+                          current version and exit (no login; -e selects the cache)
   -v, --verbose           Verbose step-level logging to stderr
   -h, --help              Show this help
 
@@ -268,6 +272,39 @@ func rampupAdvised(existed bool, lastRun, now time.Time) bool {
 		return true
 	}
 	return lastRun.Before(now.AddDate(0, -6, 0))
+}
+
+// runMigrate upgrades the redeemed-codes cache file in place to the current versioned
+// format. It is a standalone, login-free maintenance op (--migrate): it reads the
+// existing file (including the old bare-map format), preserves its codes and last-run
+// time, and rewrites it as {version, lastRun, codes}. lastRun is intentionally left
+// untouched (zero for an old file) so the stale-run warning still fires for long-absent
+// users. Already-current files are left as-is.
+func runMigrate() {
+	folder := resolveCacheFolder()
+	configFilename := usernameHash + "-shift-codes.json"
+	if folder == nil {
+		fmt.Println("No cache folder available; nothing to migrate.")
+		return
+	}
+
+	data, err := folder.ReadFile(configFilename)
+	if err != nil {
+		fmt.Println("No redeemed-codes cache to migrate.")
+		return
+	}
+	var existing redeemedCache
+	if json.Unmarshal(data, &existing) == nil && existing.Codes != nil && existing.Version == cacheVersion {
+		fmt.Printf("Cache is already version %d (nothing to do).\n", cacheVersion)
+		return
+	}
+
+	codes, lastRun, _ := readRedeemedCache(folder, configFilename)
+	if err := writeRedeemedCache(folder, configFilename, codes, lastRun); err != nil {
+		printError(err)
+		return
+	}
+	fmt.Printf("Migrated %d codes to cache version %d (in place).\n", len(codes), cacheVersion)
 }
 
 func doShift(client *bl3.Bl3Client, opts shiftOptions) {
@@ -456,6 +493,7 @@ func main() {
 		dryrun          bool
 		verbose         bool
 		rampup          bool
+		migrate         bool
 	)
 
 	flag.StringVar(&username, "e", "", "SHiFT account email")
@@ -470,6 +508,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "Use a local config.json instead of the published remote config")
 	flag.BoolVar(&dryrun, "dryrun", false, "Discover and match codes but do not redeem")
 	flag.BoolVar(&rampup, "rampup", false, "Cautious mode for a first run / long gap: pace requests and stop cleanly if throttled")
+	flag.BoolVar(&migrate, "migrate", false, "Upgrade the redeemed-codes cache file in place to the current version and exit (no login)")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose step-level logging to stderr")
 	flag.BoolVar(&verbose, "v", false, "Verbose step-level logging to stderr")
 	flag.Usage = usage
@@ -501,17 +540,24 @@ func main() {
 		line, _, _ := reader.ReadLine()
 		username = string(line)
 	}
+
+	// SHA256 Hash (selects the per-account redeemed-codes cache file).
+	hasher := sha256.New()
+	hasher.Write([]byte(username))
+	usernameHash = hex.EncodeToString(hasher.Sum(nil))
+
+	// --migrate is a standalone, login-free maintenance op: just upgrade the cache.
+	if migrate {
+		runMigrate()
+		return
+	}
+
 	if password == "" {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter password        : ")
 		line, _, _ := reader.ReadLine()
 		password = string(line)
 	}
-
-	// SHA256 Hash
-	hasher := sha256.New()
-	hasher.Write([]byte(username))
-	usernameHash = hex.EncodeToString(hasher.Sum(nil))
 
 	fmt.Print("Setting up . . . . . ")
 	client, err := bl3.NewBl3Client(configPath)
