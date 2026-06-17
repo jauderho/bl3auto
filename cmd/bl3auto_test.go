@@ -601,16 +601,20 @@ func TestDoShiftExpiredCachedAndSkipped(t *testing.T) {
 // TestResolveCacheFolderPrefersLocal: the real resolveCacheFolder uses a local
 // codes/ dir when present, and falls back to the config dir otherwise.
 func TestResolveCacheFolderPrefersLocal(t *testing.T) {
+	// t.TempDir registers its own RemoveAll cleanup; create it first so the
+	// chdir-back cleanup below is registered after it and therefore runs *before*
+	// it (cleanups are LIFO). On Windows RemoveAll fails on a directory that is
+	// still a process's current working directory, so we must chdir out first.
+	dir := t.TempDir()
+
 	orig, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chdir(orig) })
-
-	dir := t.TempDir()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
 
 	// No codes/ dir → config-dir fallback (not the local path).
 	if f := resolveCacheFolder(); f.Type == configdir.Local && f.Path == "codes" {
