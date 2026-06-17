@@ -17,26 +17,26 @@ import (
 	"github.com/shibukawa/configdir"
 )
 
-// shrinkBackoff sets tiny rate-limit timings (and disables pacing, including the
-// rampup throttle/backoff) for the duration of a test so the rate-limit and rampup
-// paths run fast. Rampup thresholds are saved/restored so a test may lower them after
+// shrinkBackoff sets tiny rate-limit timings and disables all request pacing/backoff
+// sleeps for the duration of a test so the rate-limit and bulk-backoff paths run fast.
+// The consecutive-non-200 thresholds are saved/restored so a test may lower them after
 // calling this and have the originals restored on cleanup.
 func shrinkBackoff(t *testing.T, retries int) {
 	t.Helper()
 	ob, om, or := rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries
 	tb, tj := throttleBase, throttleJitter
-	rtb, rtj, rbb, rbm, rba, rsa := rampupThrottleBase, rampupThrottleJitter,
-		rampupBackoffBase, rampupBackoffMax, rampupBackoffAfter, rampupStopAfter
+	rtb, rtj, bb, bm, ba, sa := rampupThrottleBase, rampupThrottleJitter,
+		backoffBase, backoffMax, backoffAfter, stopAfter
 	rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = time.Millisecond, time.Millisecond, retries
 	throttleBase, throttleJitter = 0, 0
 	rampupThrottleBase, rampupThrottleJitter = 0, 0
-	rampupBackoffBase, rampupBackoffMax = 0, 0
+	backoffBase, backoffMax = 0, 0
 	t.Cleanup(func() {
 		rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = ob, om, or
 		throttleBase, throttleJitter = tb, tj
 		rampupThrottleBase, rampupThrottleJitter = rtb, rtj
-		rampupBackoffBase, rampupBackoffMax = rbb, rbm
-		rampupBackoffAfter, rampupStopAfter = rba, rsa
+		backoffBase, backoffMax = bb, bm
+		backoffAfter, stopAfter = ba, sa
 	})
 }
 
@@ -286,11 +286,11 @@ func rampupListJSON(n int) string {
 }
 
 // TestRampupStopsAfterConsecutiveNon200: when the code-query keeps returning 302,
-// rampup backs off and then stops cleanly once it hits rampupStopAfter in a row —
+// rampup backs off and then stops cleanly once it hits stopAfter in a row —
 // without querying every remaining code.
 func TestRampupStopsAfterConsecutiveNon200(t *testing.T) {
 	shrinkBackoff(t, 1)
-	rampupBackoffAfter, rampupStopAfter = 2, 5
+	backoffAfter, stopAfter = 2, 5
 
 	const n = 10
 	listJSON := rampupListJSON(n)
@@ -316,17 +316,17 @@ func TestRampupStopsAfterConsecutiveNon200(t *testing.T) {
 
 	out := captureStdout(t, func() { doShift(c, shiftOptions{rampup: true}) })
 
-	if queries != rampupStopAfter {
-		t.Errorf("expected exactly %d code queries before stopping, got %d", rampupStopAfter, queries)
+	if queries != stopAfter {
+		t.Errorf("expected exactly %d code queries before stopping, got %d", stopAfter, queries)
 	}
-	if got := strings.Count(out, "Skipping "); got != rampupStopAfter {
-		t.Errorf("expected %d skip lines, got %d:\n%s", rampupStopAfter, got, out)
+	if got := strings.Count(out, "Skipping "); got != stopAfter {
+		t.Errorf("expected %d skip lines, got %d:\n%s", stopAfter, got, out)
 	}
 	if !strings.Contains(out, "Stopped after") {
 		t.Errorf("expected shadowban stop message, got:\n%s", out)
 	}
 	if !strings.Contains(out, "backing off") {
-		t.Errorf("expected backoff message after %d in a row, got:\n%s", rampupBackoffAfter, out)
+		t.Errorf("expected backoff message after %d in a row, got:\n%s", backoffAfter, out)
 	}
 }
 
@@ -334,7 +334,7 @@ func TestRampupStopsAfterConsecutiveNon200(t *testing.T) {
 // so a steady drip of 302s never reaches the stop threshold.
 func TestRampupCounterResetsOn200(t *testing.T) {
 	shrinkBackoff(t, 1)
-	rampupBackoffAfter, rampupStopAfter = 100, 5 // never back off; stop at 5 in a row
+	backoffAfter, stopAfter = 100, 5 // never back off; stop at 5 in a row
 
 	const n = 12
 	listJSON := rampupListJSON(n)
@@ -632,6 +632,115 @@ func TestPlatformFilterDoesNotComplete(t *testing.T) {
 	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
 	if *queries != 2 {
 		t.Errorf("incomplete code should be re-queried, got %d total queries", *queries)
+	}
+}
+
+// TestBulkStopsOn302WithoutRampup: the dialed-back default — even without --rampup,
+// a bulk run stops after stopAfter consecutive non-200 responses.
+func TestBulkStopsOn302WithoutRampup(t *testing.T) {
+	shrinkBackoff(t, 1)
+	backoffAfter, stopAfter = 3, 6
+	usernameHash = "unittest-bulkstop"
+	useTempCache(t)
+
+	listJSON := rampupListJSON(20)
+	queries := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			queries++
+			w.Header().Set("Location", "/home")
+			w.WriteHeader(http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(c, shiftOptions{}) }) // 20 codes => bulk, no --rampup
+	if queries != stopAfter {
+		t.Errorf("bulk run should stop after %d consecutive non-200s, got %d queries", stopAfter, queries)
+	}
+	if !strings.Contains(out, "Stopped after") {
+		t.Errorf("expected the stop message without --rampup, got:\n%s", out)
+	}
+}
+
+// TestGameFilter: --skip-game / --game filter the candidate list before querying, so
+// codes for excluded games are never queried.
+func TestGameFilter(t *testing.T) {
+	listJSON := `[{"meta":{},"codes":[` +
+		`{"code":"BL3CODE","game":"Borderlands 3","expired":false},` +
+		`{"code":"BL4CODE","game":"Borderlands 4","expired":false}]}]`
+
+	t.Run("skip", func(t *testing.T) {
+		shrinkBackoff(t, 5)
+		usernameHash = "unittest-skipgame"
+		useTempCache(t)
+		srv, queries := countingShiftServer(t, listJSON)
+		defer srv.Close()
+		c := newDoShiftClient(t, srv.URL)
+		_ = captureStdout(t, func() { doShift(c, shiftOptions{gameSkip: []string{"borderlands 4"}}) })
+		if *queries != 1 {
+			t.Errorf("skip-game should query only the non-skipped code, got %d", *queries)
+		}
+		cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
+		if cached.Contains("BL4CODE", "steam") {
+			t.Errorf("a skipped game's code must not be redeemed: %v", cached)
+		}
+	})
+
+	t.Run("include", func(t *testing.T) {
+		shrinkBackoff(t, 5)
+		usernameHash = "unittest-incgame"
+		useTempCache(t)
+		srv, queries := countingShiftServer(t, listJSON)
+		defer srv.Close()
+		c := newDoShiftClient(t, srv.URL)
+		_ = captureStdout(t, func() { doShift(c, shiftOptions{gameInclude: []string{"borderlands 3"}}) })
+		if *queries != 1 {
+			t.Errorf("include-game should query only the matching code, got %d", *queries)
+		}
+	})
+}
+
+func TestMatchesGame(t *testing.T) {
+	cases := []struct {
+		name          string
+		include, skip []string
+		game          string
+		want          bool
+	}{
+		{"no filters", nil, nil, "Borderlands 4", true},
+		{"skip matches", nil, []string{"borderlands 4"}, "Borderlands 4", false},
+		{"skip misses", nil, []string{"borderlands 4"}, "Borderlands 3", true},
+		{"include matches", []string{"wonderlands"}, nil, "Tiny Tina's Wonderlands", true},
+		{"include misses", []string{"borderlands 3"}, nil, "Borderlands 4", false},
+		{"skip wins over include", []string{"borderlands"}, []string{"borderlands 4"}, "Borderlands 4", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesGame(tc.include, tc.skip, tc.game); got != tc.want {
+				t.Errorf("matchesGame(%v,%v,%q)=%v want %v", tc.include, tc.skip, tc.game, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAccountPlatforms(t *testing.T) {
+	m := bl3.ShiftCodeMap{
+		"A": {"epic", "steam"},
+		"B": {"steam", completeMarker},
+		"C": {expiredMarker},
+	}
+	got := accountPlatforms(m)
+	if len(got) != 2 || got[0] != "epic" || got[1] != "steam" {
+		t.Errorf("accountPlatforms should return sorted real services {epic,steam}, got %v", got)
 	}
 }
 

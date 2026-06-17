@@ -44,6 +44,14 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * Codes already redeemed on every linked platform are marked complete and skipped
   without a query on later runs, cutting request volume. `--refresh` re-queries those
   codes to pick up a platform linked since (expired codes stay skipped regardless).
+* `--game` / `--skip-game`: per-run, case-insensitive substring filters to redeem only
+  (or skip) certain games. Filtered-out codes are never queried, so this is the one
+  filter that cuts query volume. `--refresh` ignores them for a full re-scan.
+* The consecutive non-200 backoff and graceful stop now apply to **every** bulk run,
+  not just `--rampup` (SHiFT soft-rate-limits with 302s); `--rampup` still adds slower
+  request pacing on top.
+* Before a bulk run, the platforms your account can redeem on (derived from the cache)
+  are shown, and verbose mode prints the game each code is for.
 * The cache now lives in a local `codes/` directory when one exists in the working
   directory (the same path the Docker image mounts), so a native run from the project
   directory shares the cache instead of using the per-user OS config dir.

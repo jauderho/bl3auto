@@ -15,6 +15,8 @@
 //	    --v2                Force the newer ugoogalizer/mentalmars code source
 //	    --platform <list>   Comma-separated services to redeem on
 //	                        (steam,epic,psn,xboxlive,nintendo,stadia); default: all offered
+//	    --game <list>       Comma-separated games to redeem (substring match; default: all)
+//	    --skip-game <list>  Comma-separated games to skip (substring match)
 //	    --config <path>     Use a local config.json instead of the published remote config
 //	    --dryrun            Discover and match codes but do not redeem (no side effects)
 //	    --rampup            Cautious mode for a first run / long gap: pace requests,
@@ -40,6 +42,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -59,18 +62,23 @@ var (
 	rateLimitRetries  = 5                      // give up (stop the run) after this many
 )
 
-// --rampup tuning. Rampup is the cautious mode for a first run or after a long gap,
-// where SHiFT readily soft-rate-limits us with 302s on the code-query. It paces
-// requests much more slowly and reacts to *consecutive* non-200 responses: back off
-// after rampupBackoffAfter in a row, and stop the run after rampupStopAfter (a likely
-// shadowban). All are vars so tests can shrink them.
+// Consecutive non-200 (commonly 302) handling for bulk runs. SHiFT soft-rate-limits
+// by redirecting the code-query, so on every bulk run we back off after backoffAfter
+// such responses in a row and stop the run after stopAfter (a likely shadowban),
+// saving progress. --rampup adds slower request pacing on top. All vars so tests can
+// shrink them.
 var (
-	rampupThrottleBase   = 1500 * time.Millisecond // minimum spacing between requests in rampup
-	rampupThrottleJitter = 1500 * time.Millisecond // added random spacing (0..jitter)
-	rampupBackoffBase    = 5 * time.Second         // first backoff after rampupBackoffAfter
-	rampupBackoffMax     = 60 * time.Second        // backoff ceiling
-	rampupBackoffAfter   = 5                       // consecutive non-200 → start backing off
-	rampupStopAfter      = 20                      // consecutive non-200 → stop the run
+	backoffAfter = 5               // consecutive non-200 → start backing off
+	stopAfter    = 20              // consecutive non-200 → stop the run
+	backoffBase  = 5 * time.Second // first backoff after backoffAfter
+	backoffMax   = 60 * time.Second
+)
+
+// --rampup request pacing: much slower spacing than the normal bulk throttle, for a
+// first run or after a long gap when SHiFT throttles aggressively.
+var (
+	rampupThrottleBase   = 1500 * time.Millisecond
+	rampupThrottleJitter = 1500 * time.Millisecond
 )
 
 // bulkThreshold is the candidate-code count at or above which a run is treated
@@ -130,6 +138,8 @@ type shiftOptions struct {
 	source          string // "v1", "v2", or "" for default failover
 	singleShiftCode string
 	platformFilter  []string
+	gameInclude     []string // only redeem these games (substring match; empty = all)
+	gameSkip        []string // skip these games (substring match)
 	dryrun          bool
 	rampup          bool
 	refresh         bool // re-query codes marked complete (pick up newly-linked platforms)
@@ -175,6 +185,59 @@ func allServicesRedeemed(m bl3.ShiftCodeMap, code string, forms []bl3.Redemption
 	return true
 }
 
+// splitCSV splits a comma-separated flag value into trimmed, non-empty tokens.
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// matchesGame reports whether a code's game passes the include/skip filters
+// (case-insensitive substring). An empty include list matches every game; a game
+// matching any skip term is excluded (skip wins over include).
+func matchesGame(include, skip []string, game string) bool {
+	g := strings.ToLower(game)
+	for _, s := range skip {
+		if s = strings.ToLower(strings.TrimSpace(s)); s != "" && strings.Contains(g, s) {
+			return false
+		}
+	}
+	if len(include) == 0 {
+		return true
+	}
+	for _, in := range include {
+		if in = strings.ToLower(strings.TrimSpace(in)); in != "" && strings.Contains(g, in) {
+			return true
+		}
+	}
+	return false
+}
+
+// accountPlatforms returns the sorted set of real services (platforms) seen in the
+// cache — i.e. the platforms this account has redeemed on. Sentinel markers are
+// excluded.
+func accountPlatforms(m bl3.ShiftCodeMap) []string {
+	set := map[string]struct{}{}
+	for _, services := range m {
+		for _, s := range services {
+			if s == expiredMarker || s == completeMarker {
+				continue
+			}
+			set[s] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for s := range set {
+		out = append(out, s)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // redeemedCache is the versioned on-disk format of the redeemed-codes cache. Older
 // files are a bare ShiftCodeMap (no wrapper); readRedeemedCache reads both.
 type redeemedCache struct {
@@ -199,6 +262,10 @@ Flags:
       --v2                Force the newer ugoogalizer/mentalmars code source
       --platform <list>   Comma-separated services to redeem on; default: all offered
                           (valid: steam, epic, psn, xboxlive, nintendo, stadia)
+      --game <list>       Comma-separated games to redeem (substring match; default: all),
+                          e.g. --game "borderlands 3,wonderlands"
+      --skip-game <list>  Comma-separated games to skip (substring match),
+                          e.g. --skip-game "borderlands 4"
       --config <path>     Use a local config.json instead of the published remote config
       --dryrun            Discover and match codes but do not redeem (no side effects)
       --rampup            Cautious mode for a first run or after a long gap: paces
@@ -225,6 +292,9 @@ Examples:
 
   # First run, or first in a long while: redeem cautiously
   bl3auto -e you@example.com -p 'secret' --rampup
+
+  # Skip a game you don't own yet (substring match, case-insensitive)
+  bl3auto -e you@example.com -p 'secret' --skip-game 'borderlands 4'
 
   # Redeem a single code on Steam only
   bl3auto -e you@example.com -p 'secret' --shift-code ABCDE-... --platform steam
@@ -377,6 +447,13 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 			fmt.Println("         with --rampup to pace requests and stop cleanly if throttled.")
 		}
 
+		// Pre-flight: show which platforms this account can redeem on (derived from
+		// the cache) so the user can confirm their account is linked as expected.
+		if plats := accountPlatforms(redeemedCodes); len(plats) > 0 {
+			fmt.Println("Account can redeem on: " + strings.Join(plats, ", ") +
+				" (from cache; link more at shift.gearboxsoftware.com to add platforms)")
+		}
+
 		label := "Getting new SHIFT codes"
 		if opts.source != "" {
 			label += " (" + opts.source + ")"
@@ -387,8 +464,22 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 			printError(err)
 			return
 		}
-		codes = list
 		fmt.Println(SUCCESS)
+
+		// Filter the candidate list by game before querying anything — this is the
+		// one filter that cuts code-query volume (codes for unwanted games are never
+		// queried). --refresh ignores the filters for a full re-scan.
+		if !opts.refresh && (len(opts.gameInclude) > 0 || len(opts.gameSkip) > 0) {
+			kept := make([]bl3.ShiftCode, 0, len(list))
+			for _, sc := range list {
+				if matchesGame(opts.gameInclude, opts.gameSkip, sc.Game) {
+					kept = append(kept, sc)
+				}
+			}
+			fmt.Printf("Game filter: %d of %d codes match.\n", len(kept), len(list))
+			list = kept
+		}
+		codes = list
 	}
 
 	// Pace requests and back off on rate limits for bulk runs; --rampup forces this
@@ -424,6 +515,10 @@ codeLoop:
 			continue
 		}
 
+		if client.Verbose && sc.Game != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "[verbose] %s — game: %s\n", code, sc.Game)
+		}
+
 		var forms []bl3.RedemptionForm
 		var reason string
 		err, stop := withBackoff(bulk, func() error {
@@ -442,12 +537,12 @@ codeLoop:
 		if errors.As(err, &statusErr) {
 			consecutive++
 			fmt.Println("Skipping '" + code + "': " + err.Error())
-			if opts.rampup && consecutive >= rampupStopAfter {
+			if bulk && consecutive >= stopAfter {
 				stoppedShadowban = true
 				break codeLoop
 			}
-			if opts.rampup && consecutive >= rampupBackoffAfter {
-				wait := rampupBackoff(consecutive)
+			if bulk && consecutive >= backoffAfter {
+				wait := consecutiveBackoff(consecutive)
 				fmt.Printf("         %d non-200 responses in a row; backing off %s . . .\n", consecutive, wait)
 				time.Sleep(wait)
 			}
@@ -554,16 +649,16 @@ codeLoop:
 	}
 }
 
-// rampupBackoff returns the escalating sleep for the Nth consecutive non-200 code
-// query in rampup mode, capped at rampupBackoffMax.
-func rampupBackoff(consecutive int) time.Duration {
-	shift := consecutive - rampupBackoffAfter
+// consecutiveBackoff returns the escalating sleep for the Nth consecutive non-200
+// code query on a bulk run, capped at backoffMax.
+func consecutiveBackoff(consecutive int) time.Duration {
+	shift := consecutive - backoffAfter
 	if shift < 0 {
 		shift = 0
 	}
-	wait := rampupBackoffBase << uint(shift)
-	if wait > rampupBackoffMax || wait <= 0 {
-		wait = rampupBackoffMax
+	wait := backoffBase << uint(shift)
+	if wait > backoffMax || wait <= 0 {
+		wait = backoffMax
 	}
 	return wait
 }
@@ -577,6 +672,8 @@ func main() {
 		useV1           bool
 		useV2           bool
 		platform        string
+		game            string
+		skipGame        string
 		configPath      string
 		dryrun          bool
 		verbose         bool
@@ -595,6 +692,8 @@ func main() {
 	flag.BoolVar(&useV1, "v1", false, "Force the original orcicorn code source")
 	flag.BoolVar(&useV2, "v2", false, "Force the newer ugoogalizer/mentalmars code source")
 	flag.StringVar(&platform, "platform", "", "Comma-separated services to redeem on (default: all offered)")
+	flag.StringVar(&game, "game", "", "Comma-separated games to redeem (substring match; default: all)")
+	flag.StringVar(&skipGame, "skip-game", "", "Comma-separated games to skip (substring match)")
 	flag.StringVar(&configPath, "config", "", "Use a local config.json instead of the published remote config")
 	flag.BoolVar(&dryrun, "dryrun", false, "Discover and match codes but do not redeem")
 	flag.BoolVar(&rampup, "rampup", false, "Cautious mode for a first run / long gap: pace requests and stop cleanly if throttled")
@@ -619,12 +718,9 @@ func main() {
 		source = "v2"
 	}
 
-	var platformFilter []string
-	for p := range strings.SplitSeq(platform, ",") {
-		if t := strings.TrimSpace(p); t != "" {
-			platformFilter = append(platformFilter, t)
-		}
-	}
+	platformFilter := splitCSV(platform)
+	gameInclude := splitCSV(game)
+	gameSkip := splitCSV(skipGame)
 
 	if username == "" {
 		reader := bufio.NewReader(os.Stdin)
@@ -676,6 +772,8 @@ func main() {
 		source:          source,
 		singleShiftCode: singleShiftCode,
 		platformFilter:  platformFilter,
+		gameInclude:     gameInclude,
+		gameSkip:        gameSkip,
 		dryrun:          dryrun,
 		rampup:          rampup,
 		refresh:         refresh,

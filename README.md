@@ -37,6 +37,8 @@ Run it with `--help` to view command line args that are supported.
 | `--v1` | Force the original orcicorn code source |
 | `--v2` | Force the newer ugoogalizer/mentalmars code source |
 | `--platform <list>` | Comma-separated services to redeem on (`steam,epic,psn,xboxlive,nintendo,stadia`); default: all offered |
+| `--game <list>` | Only redeem these games (case-insensitive substring, e.g. `"borderlands 3,wonderlands"`); default: all |
+| `--skip-game <list>` | Skip these games (case-insensitive substring, e.g. `"borderlands 4"`) |
 | `--config <path>` | Use a local `config.json` instead of the published remote config |
 | `--dryrun` | Discover and match codes but do not redeem (no side effects) |
 | `--rampup` | Cautious mode for a first run or after a long gap: paces requests, backs off after 5 consecutive non-200 responses, and stops cleanly after 20 (likely rate-limit/shadowban) |
@@ -58,6 +60,17 @@ once per linked platform (e.g. Steam *and* Epic). To cover more platforms (PSN, 
 Nintendo, Stadia), link them once at
 [shift.gearboxsoftware.com](https://shift.gearboxsoftware.com) and bl3auto will pick
 them up automatically. Use `--platform` to narrow redemption to a subset of services.
+Before a bulk run, bl3auto prints the platforms your account can redeem on (from the
+cache) so you can confirm your account is linked as you expect.
+
+#### Skipping games you don't want
+
+SHiFT redemption isn't gated by game ownership — a code for a game you don't own still
+redeems and the reward waits until you play. If you'd rather not spend requests on a
+game (e.g. one you haven't bought yet), use `--skip-game "borderlands 4"` or restrict
+with `--game "borderlands 3,wonderlands"`. Unlike `--platform`, the game filter drops
+codes **before** they're queried, so it's the one filter that actually reduces request
+volume. It's per-run (not remembered); `--refresh` ignores it for a full re-scan.
 
 #### Code sources
 
