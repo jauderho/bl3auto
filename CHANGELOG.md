@@ -21,6 +21,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * `--allow-inactive` now includes codes flagged as expired in the v2 source.
 * Rate-limit handling for bulk redemption: requests are paced and the tool backs
   off (and stops cleanly, saving progress) on HTTP 429/503 instead of hammering.
+* The runtime config is now embedded in the binary as a fallback, so a freshly
+  compiled binary works without `--config` or network access. The published
+  remote config is still preferred when reachable and compatible (for hot-fixes);
+  an unreachable or older-schema remote config falls back to the embedded one.
 
 ## v2.2.13 - 2022-01-18
 ### Added

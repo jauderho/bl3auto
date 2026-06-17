@@ -2,6 +2,7 @@ package bl3auto
 
 import (
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -243,6 +244,84 @@ func TestNewBl3ClientErrors(t *testing.T) {
 	_ = os.WriteFile(bad, []byte("not json"), 0o600)
 	if _, err := NewBl3Client(bad); err == nil {
 		t.Error("expected error for invalid json")
+	}
+}
+
+func TestConfigComplete(t *testing.T) {
+	full := Bl3Config{BaseUrl: "b", HomeUrl: "h", LoginUrl: "l"}
+	full.Shift.RedemptionInfoUrl = "r"
+	full.Shift.RedemptionUrl = "rr"
+	full.Shift.CodeListUrlV2 = "v2"
+	if !configComplete(full) {
+		t.Error("a fully populated config should be complete")
+	}
+	// The pre-2.3.0 schema lacks HomeUrl (and the others) -> incomplete.
+	noHome := full
+	noHome.HomeUrl = ""
+	if configComplete(noHome) {
+		t.Error("config without HomeUrl should be incomplete")
+	}
+
+	// The embedded config must itself be complete, or fallback is useless.
+	embedded := Bl3Config{}
+	if err := json.Unmarshal(embeddedConfig, &embedded); err != nil {
+		t.Fatalf("embedded config does not parse: %v", err)
+	}
+	if !configComplete(embedded) {
+		t.Errorf("embedded config.json is incomplete: %+v", embedded)
+	}
+}
+
+func TestNewBl3ClientFallsBackToEmbedded(t *testing.T) {
+	// Remote returns the old, incompatible schema (as main does pre-merge).
+	oldSchema := `{"version":"2.2.28","loginUrl":"https://api.2k.com/borderlands/users/authenticate","shiftConfig":{"codeListUrl":"x"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, oldSchema)
+	}))
+	defer srv.Close()
+	orig := remoteConfigUrl
+	remoteConfigUrl = srv.URL
+	defer func() { remoteConfigUrl = orig }()
+
+	c, err := NewBl3Client("")
+	if err != nil {
+		t.Fatalf("NewBl3Client: %v", err)
+	}
+	if !configComplete(c.Config) || c.Config.HomeUrl == "" {
+		t.Errorf("expected embedded (complete) config, got %+v", c.Config)
+	}
+	if strings.Contains(c.Config.LoginUrl, "api.2k.com") {
+		t.Error("should not have used the stale remote login URL")
+	}
+}
+
+func TestNewBl3ClientFallbackWhenRemoteUnreachable(t *testing.T) {
+	orig := remoteConfigUrl
+	remoteConfigUrl = "http://127.0.0.1:0/nope"
+	defer func() { remoteConfigUrl = orig }()
+
+	c, err := NewBl3Client("")
+	if err != nil || !configComplete(c.Config) {
+		t.Errorf("unreachable remote should fall back to embedded: err=%v cfg=%+v", err, c.Config)
+	}
+}
+
+func TestNewBl3ClientUsesValidRemote(t *testing.T) {
+	remote := `{"version":"9.9.9","baseUrl":"https://x","homeUrl":"https://x/home","loginUrl":"https://x/sessions","shiftConfig":{"codeListUrlV2":"https://x/v2","redemptionInfoUrl":"https://x/e","redemptionUrl":"https://x/c"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, remote)
+	}))
+	defer srv.Close()
+	orig := remoteConfigUrl
+	remoteConfigUrl = srv.URL
+	defer func() { remoteConfigUrl = orig }()
+
+	c, err := NewBl3Client("")
+	if err != nil {
+		t.Fatalf("NewBl3Client: %v", err)
+	}
+	if c.Config.Version != "9.9.9" || c.Config.HomeUrl != "https://x/home" {
+		t.Errorf("expected the valid remote config to be used, got %+v", c.Config)
 	}
 }
 

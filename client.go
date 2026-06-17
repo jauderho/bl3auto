@@ -1,6 +1,7 @@
 package bl3auto
 
 import (
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,9 +23,17 @@ import (
 // or 503 (Service Unavailable). Callers should back off rather than retry hard.
 var ErrRateLimited = errors.New("rate limited by SHiFT")
 
-// remoteConfigUrl is the default location of the published runtime config. It is
-// fetched at startup so the GearBox endpoints can be hot-fixed without a release.
-const remoteConfigUrl = "https://raw.githubusercontent.com/jauderho/bl3auto/main/config.json"
+// remoteConfigUrl is the location of the published runtime config. It is fetched
+// at startup so the GearBox endpoints can be hot-fixed without a release. It is a
+// var so tests can point it elsewhere.
+var remoteConfigUrl = "https://raw.githubusercontent.com/jauderho/bl3auto/main/config.json"
+
+// embeddedConfig is the config.json compiled into the binary. It is the fallback
+// used when the remote config is unreachable or incompatible with this build, so
+// a freshly compiled binary always works without --config or network access.
+//
+//go:embed config.json
+var embeddedConfig []byte
 
 type HttpClient struct {
 	http.Client
@@ -219,22 +228,9 @@ func NewBl3Client(configPath string) (*Bl3Client, error) {
 		return nil, errors.New("failed to start client")
 	}
 
-	var configBytes []byte
-	if configPath != "" {
-		configBytes, err = os.ReadFile(configPath)
-		if err != nil {
-			return nil, errors.New("failed to read config '" + configPath + "': " + err.Error())
-		}
-	} else {
-		configBytes, err = fetchBytes(remoteConfigUrl)
-		if err != nil {
-			return nil, errors.New("failed to get config: " + err.Error())
-		}
-	}
-
-	config := Bl3Config{}
-	if err := json.Unmarshal(configBytes, &config); err != nil {
-		return nil, errors.New("failed to parse config: " + err.Error())
+	config, err := loadConfig(configPath)
+	if err != nil {
+		return nil, err
 	}
 
 	for header, value := range config.RequestHeaders {
@@ -245,6 +241,47 @@ func NewBl3Client(configPath string) (*Bl3Client, error) {
 		HttpClient: *client,
 		Config:     config,
 	}, nil
+}
+
+// configComplete reports whether a parsed config carries the endpoints the SHiFT
+// login/redemption flow needs. Used to reject a stale or incompatible remote
+// config (e.g. the pre-2.3.0 schema, which lacks these fields).
+func configComplete(c Bl3Config) bool {
+	return c.BaseUrl != "" && c.HomeUrl != "" && c.LoginUrl != "" &&
+		c.Shift.RedemptionInfoUrl != "" && c.Shift.RedemptionUrl != "" &&
+		c.Shift.CodeListUrlV2 != ""
+}
+
+// loadConfig resolves the runtime config. An explicit --config path is used
+// as-is. Otherwise the published remote config is tried first (so endpoints can
+// be hot-fixed without a release); if it is unreachable, unparseable, or
+// incompatible with this binary, the embedded config.json is used instead.
+func loadConfig(configPath string) (Bl3Config, error) {
+	if configPath != "" {
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return Bl3Config{}, errors.New("failed to read config '" + configPath + "': " + err.Error())
+		}
+		config := Bl3Config{}
+		if err := json.Unmarshal(data, &config); err != nil {
+			return Bl3Config{}, errors.New("failed to parse config '" + configPath + "': " + err.Error())
+		}
+		return config, nil
+	}
+
+	if data, err := fetchBytes(remoteConfigUrl); err == nil {
+		remote := Bl3Config{}
+		if json.Unmarshal(data, &remote) == nil && configComplete(remote) {
+			return remote, nil
+		}
+	}
+
+	// Remote was missing or incompatible; use the config baked into the binary.
+	config := Bl3Config{}
+	if err := json.Unmarshal(embeddedConfig, &config); err != nil {
+		return Bl3Config{}, errors.New("failed to parse embedded config: " + err.Error())
+	}
+	return config, nil
 }
 
 func (client *Bl3Client) logf(format string, args ...any) {
