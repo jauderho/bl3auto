@@ -1,17 +1,16 @@
 {
-    "version": "2.2.28",
-    "loginUrl": "https://api.2k.com/borderlands/users/authenticate",
-    "loginRedirectHeader": "X-CT-REDIRECT",
-    "sessionIdHeader": "X-SESSION-SET",
-    "sessionHeader": "X-SESSION",
+    "version": "2.3.0",
+    "baseUrl": "https://shift.gearboxsoftware.com",
+    "homeUrl": "https://shift.gearboxsoftware.com/home",
+    "loginUrl": "https://shift.gearboxsoftware.com/sessions",
     "requestHeaders": {
-        "Origin": "https://borderlands.com",
-        "Referer": "https://borderlands.com/en-US/"
+        "Origin": "https://shift.gearboxsoftware.com",
+        "Referer": "https://shift.gearboxsoftware.com/home"
     },
     "shiftConfig": {
-        "codeListUrl": "https://raw.githubusercontent.com/ugoogalizer/autoshift-codes/main/shiftcodes.json",
-        "codeInfoUrl": "https://api.2k.com/borderlands/code/",
-        "userInfoUrl": "https://api.2k.com/borderlands/users/me",
-        "gameCodename": "oak"
+        "codeListUrlV2": "https://raw.githubusercontent.com/ugoogalizer/autoshift-codes/refs/heads/main/shiftcodes.json",
+        "codeListUrlV1": "https://raw.githubusercontent.com/jauderho/shift-codes/refs/heads/main/orcicorn/shift-code/index.json",
+        "redemptionInfoUrl": "https://shift.gearboxsoftware.com/entitlement_offer_codes",
+        "redemptionUrl": "https://shift.gearboxsoftware.com/code_redemptions"
     }
 }

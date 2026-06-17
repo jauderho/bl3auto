@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## v2.3.0 - 2026-06-16
+### Changed
+* Fixed authentication after Gearbox retired the `api.2k.com` Borderlands API.
+  Login and redemption now use the Gearbox SHiFT website
+  (`shift.gearboxsoftware.com`): CSRF login, then per-service redemption forms
+  with async status polling.
+### Added
+* Borderlands 4 SHiFT code support.
+* Two code-list formats with dedicated parsers: v2
+  (ugoogalizer/mentalmars `shiftcodes.json`, default) and v1 (orcicorn
+  `index.json`). Redemption uses v2 and falls back to v1 if v2 is unavailable.
+* New flags: `--v1`, `--v2`, `--platform`, `--config`, `--dryrun`, `-v/--verbose`,
+  and a documented `--help`.
+* `--allow-inactive` now includes codes flagged as expired in the v2 source.
+* Rate-limit handling for bulk redemption: requests are paced and the tool backs
+  off (and stops cleanly, saving progress) on HTTP 429/503 instead of hammering.
+* The runtime config is now embedded in the binary as a fallback, so a freshly
+  compiled binary works without `--config` or network access. The published
+  remote config is still preferred when reachable and compatible (for hot-fixes);
+  an unreachable or older-schema remote config falls back to the embedded one.
+* `--rampup`: a cautious mode for a first run or after a long gap. It paces requests
+  much more conservatively, backs off after 5 consecutive non-200 code-query
+  responses (SHiFT soft-rate-limits with 302s), and stops cleanly after 20 in a row
+  (likely shadowban) with progress saved.
+* First-run / long-gap warning: when no redeemed-codes cache exists or the last run
+  was over ~6 months ago, the tool recommends re-running with `--rampup`.
+* The redeemed-codes cache is now a versioned format (`{version, lastRun, codes}`).
+  Old bare-map files are still read, and any normal run upgrades the file in place
+  and stamps `lastRun`.
+* `--migrate`: a standalone, login-free command to upgrade the redeemed-codes cache
+  file in place to the current version (`-e` selects the per-account cache). Useful
+  for explicitly converting an old file without a redemption run.
+* `--count <n>`: stop and save after `n` successful redemptions (0 = no limit).
+  Handy with `--rampup` to cap how much a single run attempts.
+* Expired codes are now recorded in the cache (terminal state) and skipped entirely
+  on later runs — no repeated query or redemption attempt.
+* Codes already redeemed on every linked platform are marked complete and skipped
+  without a query on later runs, cutting request volume. `--refresh` re-queries those
+  codes to pick up a platform linked since (expired codes stay skipped regardless).
+* `--game` / `--skip-game`: per-run, case-insensitive substring filters to redeem only
+  (or skip) certain games. Filtered-out codes are never queried, so this is the one
+  filter that cuts query volume. `--refresh` ignores them for a full re-scan.
+* The consecutive non-200 backoff and graceful stop now apply to **every** bulk run,
+  not just `--rampup` (SHiFT soft-rate-limits with 302s); `--rampup` still adds slower
+  request pacing on top.
+* Before a bulk run, the platforms your account can redeem on (derived from the cache)
+  are shown, and verbose mode prints the game each code is for.
+* The cache now lives in a local `codes/` directory when one exists in the working
+  directory (the same path the Docker image mounts), so a native run from the project
+  directory shares the cache instead of using the per-user OS config dir.
+* Crash- and Ctrl-C-safe progress: a SIGINT/SIGTERM stops the run cleanly between codes
+  with progress saved, and the cache is also checkpointed periodically mid-run so a hard
+  crash loses at most a handful of redemptions instead of the whole run.
+* Adaptive (AIMD) request throttle on bulk runs: instead of a fixed pace, the request
+  spacing now self-tunes — it widens multiplicatively on each non-200 code query (SHiFT's
+  throttle signal) and narrows again after a clean streak, converging on the fastest rate
+  SHiFT tolerates without tripping the rate limit. `-v` prints the interval as it adapts.
+* Rate-limit backoff now honours a server `Retry-After` header (429/503 and 302) instead
+  of always guessing an exponential wait.
+* A query redirect to the sign-in page is now recognised as a lost session rather than a
+  throttle: the run stops immediately with a "session expired" message instead of backing
+  off pointlessly and counting toward the shadowban stop.
+
 ## v2.2.13 - 2022-01-18
 ### Added
 * Use goreleaser to build & release

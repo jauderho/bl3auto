@@ -7,7 +7,7 @@ release:
     name: bl3auto
 
 snapshot:
-  name_template: SNAPSHOT-{{ .Commit }}
+  version_template: SNAPSHOT-{{ .Commit }}
   
 #gomod:
 #  proxy: true
@@ -38,7 +38,7 @@ builds:
       - 6
       - 7
     goamd64:
-      - v3
+      - v1
     ignore:
       - goos: linux
         goarch: ppc64
@@ -73,14 +73,15 @@ builds:
       - -s -w 
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     wrap_in_directory: true
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     #replacements:
     #  darwin: macos
-    name_template: "{{ .ConventionalFileName }}"
+    # .ConventionalFileName was removed in goreleaser v2; use the v2 default pattern.
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}{{ if not (eq .Amd64 "v1") }}{{ .Amd64 }}{{ end }}'
     files:
       - LICENSE
       - README.md
@@ -100,7 +101,7 @@ nfpms:
   -
     id: bl3auto-nfpms
     package_name: bl3auto
-    file_name_template: "{{ .ConventionalFileName }}"
+    file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}{{ if not (eq .Amd64 "v1") }}{{ .Amd64 }}{{ end }}'
     homepage: "https://github.com/jauderho/bl3auto"
     maintainer: "Jauder Ho <jauderho@users.noreply.github.com>"
     description: "Borderlands and Wonderlands Bulk SHiFT Code Redemption System"
