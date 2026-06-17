@@ -40,6 +40,7 @@ Run it with `--help` to view command line args that are supported.
 | `--config <path>` | Use a local `config.json` instead of the published remote config |
 | `--dryrun` | Discover and match codes but do not redeem (no side effects) |
 | `--rampup` | Cautious mode for a first run or after a long gap: paces requests, backs off after 5 consecutive non-200 responses, and stops cleanly after 20 (likely rate-limit/shadowban) |
+| `--count <n>` | Stop and save after `n` successful redemptions (`0` = no limit) |
 | `--migrate` | Upgrade the redeemed-codes cache file in place to the current version and exit (no login; `-e` selects the per-account cache) |
 | `-v`, `--verbose` | Verbose step-level logging to stderr |
 
@@ -66,6 +67,18 @@ source and falls back to the original (v1) source only if v2 is unavailable:
 - **v1** — [jauderho/shift-codes](https://github.com/jauderho/shift-codes) (orcicorn `index.json`)
 
 Use `--v1` or `--v2` to force a single source.
+
+#### Redeemed-codes cache
+
+bl3auto remembers what it has already redeemed (and which codes are expired) in a
+per-account JSON file so it doesn't reattempt them. If a `codes/` directory exists in
+the working directory, that file is stored there — the same path the Docker image
+mounts its volume onto — so a native run from the project directory shares the cache
+with Docker. Otherwise it falls back to the per-user OS config directory
+(e.g. `~/Library/Application Support/bl3auto/bl3auto` on macOS,
+`~/.config/bl3auto/bl3auto` on Linux). Run `mkdir codes` before running natively if
+you want the cache kept alongside the project. Use `--migrate` to upgrade an existing
+cache file to the current format.
 
 ### Installing
 

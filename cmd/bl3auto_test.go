@@ -457,6 +457,96 @@ func TestMigrateNoCache(t *testing.T) {
 	}
 }
 
+// TestDoShiftCountLimit: --count stops the run after N successful redemptions.
+func TestDoShiftCountLimit(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-count"
+	useTempCache(t)
+	srv := cachingTestServer(t, 5) // 5 codes x steam+epic = up to 10 successes
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(c, shiftOptions{count: 2}) })
+
+	if got := strings.Count(out, "Trying "); got != 2 {
+		t.Errorf("--count 2 should attempt exactly 2 redemptions, got %d:\n%s", got, out)
+	}
+	if !strings.Contains(out, "Reached the --count limit of 2") {
+		t.Errorf("expected --count limit message, got:\n%s", out)
+	}
+}
+
+// TestDoShiftExpiredCachedAndSkipped: an expired code is recorded in the cache and
+// not re-queried on the next run.
+func TestDoShiftExpiredCachedAndSkipped(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-expired"
+	useTempCache(t)
+
+	queries := 0
+	listJSON := `[{"meta":{},"codes":[{"code":"EXPCODE","expired":false}]}]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			queries++
+			_, _ = io.WriteString(w, `<div class="alert">This SHiFT code has expired</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	// Run 1: the code is queried once, found expired, and cached as such.
+	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	if queries != 1 {
+		t.Fatalf("run 1 should query the code once, got %d", queries)
+	}
+	folder := resolveCacheFolder()
+	cached, _, _ := readRedeemedCache(folder, usernameHash+"-shift-codes.json")
+	if !cached.Contains("EXPCODE", expiredMarker) {
+		t.Fatalf("expired code should be cached with the expired marker: %v", cached)
+	}
+
+	// Run 2: the expired code is skipped outright — no further query.
+	_ = captureStdout(t, func() { doShift(c, shiftOptions{}) })
+	if queries != 1 {
+		t.Errorf("run 2 should skip the expired code (no new query), got %d total queries", queries)
+	}
+}
+
+// TestResolveCacheFolderPrefersLocal: the real resolveCacheFolder uses a local
+// codes/ dir when present, and falls back to the config dir otherwise.
+func TestResolveCacheFolderPrefersLocal(t *testing.T) {
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// No codes/ dir → config-dir fallback (not the local path).
+	if f := resolveCacheFolder(); f.Type == configdir.Local && f.Path == "codes" {
+		t.Errorf("without a codes/ dir, should not use the local path; got %+v", f)
+	}
+
+	// With a codes/ dir → local path.
+	if err := os.Mkdir("codes", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if f := resolveCacheFolder(); f.Path != "codes" || f.Type != configdir.Local {
+		t.Errorf("with a codes/ dir, expected local codes path, got %+v", f)
+	}
+}
+
 func TestSummarize(t *testing.T) {
 	if got := summarize("  hello   world \n"); got != "hello world" {
 		t.Errorf("collapse whitespace: got %q", got)

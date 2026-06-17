@@ -37,6 +37,13 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * `--migrate`: a standalone, login-free command to upgrade the redeemed-codes cache
   file in place to the current version (`-e` selects the per-account cache). Useful
   for explicitly converting an old file without a redemption run.
+* `--count <n>`: stop and save after `n` successful redemptions (0 = no limit).
+  Handy with `--rampup` to cap how much a single run attempts.
+* Expired codes are now recorded in the cache (terminal state) and skipped entirely
+  on later runs — no repeated query or redemption attempt.
+* The cache now lives in a local `codes/` directory when one exists in the working
+  directory (the same path the Docker image mounts), so a native run from the project
+  directory shares the cache instead of using the per-user OS config dir.
 
 ## v2.2.13 - 2022-01-18
 ### Added

@@ -19,6 +19,7 @@
 //	    --dryrun            Discover and match codes but do not redeem (no side effects)
 //	    --rampup            Cautious mode for a first run / long gap: pace requests,
 //	                        back off after 5 consecutive non-200s, stop after 20
+//	    --count <n>         Stop and save after n successful redemptions (0 = no limit)
 //	    --migrate           Upgrade the redeemed-codes cache file in place and exit
 //	                        (no login); -e selects the per-account cache
 //	-v, --verbose           Verbose step-level logging to stderr
@@ -75,9 +76,16 @@ var (
 // single --shift-code redemption stays fast and un-throttled.
 const bulkThreshold = 5
 
-// resolveCacheFolder returns the folder that stores the redeemed-codes cache —
-// the directory the Docker `codes/` volume maps onto. Overridable in tests.
+// resolveCacheFolder returns the folder that stores the redeemed-codes cache.
+// It prefers a local `codes/` directory in the working directory when one exists —
+// the same path the Docker image mounts its volume onto — so a native run from the
+// project directory shares the cache instead of writing to the OS config dir. When
+// no local `codes/` exists it falls back to the per-user config dir. Overridable in
+// tests.
 var resolveCacheFolder = func() *configdir.Config {
+	if fi, err := os.Stat("codes"); err == nil && fi.IsDir() {
+		return &configdir.Config{Path: "codes", Type: configdir.Local}
+	}
 	return configdir.New("bl3auto", "bl3auto").QueryFolders(configdir.Global)[0]
 }
 
@@ -122,11 +130,18 @@ type shiftOptions struct {
 	platformFilter  []string
 	dryrun          bool
 	rampup          bool
+	count           int // stop after this many successful redemptions (0 = no limit)
 }
 
 // cacheVersion is the current on-disk schema version of the redeemed-codes cache.
 // Bump it when the layout changes so future migrations can branch on it.
 const cacheVersion = 2
+
+// expiredMarker is recorded in a code's cache entry when SHiFT reports the code as
+// expired. Expiry is terminal and platform-independent, so a marked code is skipped
+// entirely (no query, no redemption) on later runs. It is not a real service, so it
+// never matches a redemption form or a --platform filter.
+const expiredMarker = "expired"
 
 // redeemedCache is the versioned on-disk format of the redeemed-codes cache. Older
 // files are a bare ShiftCodeMap (no wrapper); readRedeemedCache reads both.
@@ -157,6 +172,7 @@ Flags:
       --rampup            Cautious mode for a first run or after a long gap: paces
                           requests, backs off after 5 consecutive non-200 responses,
                           and stops cleanly after 20 (likely rate-limit/shadowban)
+      --count <n>         Stop and save after n successful redemptions (0 = no limit)
       --migrate           Upgrade the redeemed-codes cache file in place to the
                           current version and exit (no login; -e selects the cache)
   -v, --verbose           Verbose step-level logging to stderr
@@ -355,11 +371,19 @@ func doShift(client *bl3.Bl3Client, opts shiftOptions) {
 	redeemedAny := false
 	rateLimited := false
 	stoppedShadowban := false
-	consecutive := 0 // consecutive non-200 code-query responses (see --rampup)
+	reachedCount := false
+	consecutive := 0  // consecutive non-200 code-query responses (see --rampup)
+	successCount := 0 // new successful redemptions this run (see --count)
 
 codeLoop:
 	for _, sc := range codes {
 		code := sc.Code
+
+		// Codes already resolved as expired are terminal — skip them outright so we
+		// never spend a query (or a redemption) on them again.
+		if redeemedCodes.Contains(code, expiredMarker) {
+			continue
+		}
 
 		var forms []bl3.RedemptionForm
 		var reason string
@@ -397,12 +421,17 @@ codeLoop:
 		consecutive = 0
 		if len(forms) == 0 {
 			fmt.Println("'" + code + "': " + summarize(reason))
+			// An expired code is terminal: record it so it is never re-queried.
+			if strings.Contains(strings.ToLower(reason), "expired") {
+				redeemedCodes[code] = append(redeemedCodes[code], expiredMarker)
+			}
 			continue
 		}
 
 		// One redemption per form: the SHiFT site returns a form for each platform
 		// linked to the account, so a code is redeemed once per linked platform
 		// (--platform narrows this set).
+	formLoop:
 		for _, form := range forms {
 			if !bl3.ServiceMatches(opts.platformFilter, form.Service) {
 				continue
@@ -431,17 +460,30 @@ codeLoop:
 			if rerr != nil {
 				fmt.Println(rerr)
 				low := strings.ToLower(rerr.Error())
-				if strings.Contains(low, "already") || strings.Contains(low, "expired") {
+				switch {
+				case strings.Contains(low, "expired"):
+					// Expiry is global and terminal: mark the whole code and stop
+					// trying its other platforms.
+					redeemedCodes[code] = append(redeemedCodes[code], expiredMarker)
+					break formLoop
+				case strings.Contains(low, "already"):
 					redeemedCodes[code] = append(redeemedCodes[code], form.Service)
 				}
 			} else {
 				redeemedCodes[code] = append(redeemedCodes[code], form.Service)
 				fmt.Println(SUCCESS)
+				successCount++
+				if opts.count > 0 && successCount >= opts.count {
+					reachedCount = true
+					break codeLoop
+				}
 			}
 		}
 	}
 
 	switch {
+	case reachedCount:
+		fmt.Printf("Reached the --count limit of %d successful redemption(s). Progress saved; re-run to continue.\n", opts.count)
 	case stoppedShadowban:
 		fmt.Printf("Stopped after %d consecutive non-200 responses (likely rate-limited/shadowbanned by SHiFT).\n", consecutive)
 		fmt.Println("Progress saved; wait a while and re-run with --rampup to continue.")
@@ -494,6 +536,7 @@ func main() {
 		verbose         bool
 		rampup          bool
 		migrate         bool
+		count           int
 	)
 
 	flag.StringVar(&username, "e", "", "SHiFT account email")
@@ -508,6 +551,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "Use a local config.json instead of the published remote config")
 	flag.BoolVar(&dryrun, "dryrun", false, "Discover and match codes but do not redeem")
 	flag.BoolVar(&rampup, "rampup", false, "Cautious mode for a first run / long gap: pace requests and stop cleanly if throttled")
+	flag.IntVar(&count, "count", 0, "Stop and save after this many successful redemptions (0 = no limit)")
 	flag.BoolVar(&migrate, "migrate", false, "Upgrade the redeemed-codes cache file in place to the current version and exit (no login)")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose step-level logging to stderr")
 	flag.BoolVar(&verbose, "v", false, "Verbose step-level logging to stderr")
@@ -586,6 +630,7 @@ func main() {
 		platformFilter:  platformFilter,
 		dryrun:          dryrun,
 		rampup:          rampup,
+		count:           count,
 	})
 
 	exit()
