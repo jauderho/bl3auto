@@ -28,6 +28,7 @@ func shrinkBackoff(t *testing.T, retries int) {
 	tb, tj := throttleBase, throttleJitter
 	rtb, rtj, bb, bm, ba, sa := rampupThrottleBase, rampupThrottleJitter,
 		backoffBase, backoffMax, backoffAfter, stopAfter
+	tc, tsf, tsp, tsa := throttleCeil, throttleSlowFactor, throttleSpeedup, throttleSpeedupAfter
 	rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = time.Millisecond, time.Millisecond, retries
 	throttleBase, throttleJitter = 0, 0
 	rampupThrottleBase, rampupThrottleJitter = 0, 0
@@ -38,6 +39,7 @@ func shrinkBackoff(t *testing.T, retries int) {
 		rampupThrottleBase, rampupThrottleJitter = rtb, rtj
 		backoffBase, backoffMax = bb, bm
 		backoffAfter, stopAfter = ba, sa
+		throttleCeil, throttleSlowFactor, throttleSpeedup, throttleSpeedupAfter = tc, tsf, tsp, tsa
 	})
 }
 
@@ -745,6 +747,62 @@ func TestBulkStopsOn302WithoutRampup(t *testing.T) {
 	}
 	if !strings.Contains(out, "Stopped after") {
 		t.Errorf("expected the stop message without --rampup, got:\n%s", out)
+	}
+}
+
+// TestDoShiftSlowsOnRepeated302: the adaptive throttle widens the request spacing
+// on repeated non-200 code queries, up to the ceiling.
+func TestDoShiftSlowsOnRepeated302(t *testing.T) {
+	shrinkBackoff(t, 1)
+	backoffAfter, stopAfter = 100, 100 // keep the emergency brake from firing/stopping
+	throttleBase, throttleJitter = time.Millisecond, 0
+	throttleCeil = 8 * time.Millisecond
+	throttleSlowFactor = 2.0
+	usernameHash = "unittest-aimd-slow"
+	useTempCache(t)
+
+	listJSON := rampupListJSON(10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			w.WriteHeader(http.StatusFound) // 302 throttle (no Location → not an auth redirect)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) }) // 10 codes => bulk
+	if got := c.CurrentInterval(); got <= time.Millisecond {
+		t.Errorf("repeated 302s should widen the throttle above the 1ms floor, got %s", got)
+	}
+	if got := c.CurrentInterval(); got > throttleCeil {
+		t.Errorf("throttle should be capped at ceil %s, got %s", throttleCeil, got)
+	}
+}
+
+// TestDoShiftSpeedsUpOnCleanStreak: an all-clean bulk run never drifts the throttle
+// above the configured floor (and exercises the speed-up path).
+func TestDoShiftSpeedsUpOnCleanStreak(t *testing.T) {
+	shrinkBackoff(t, 1)
+	throttleBase, throttleJitter = 2*time.Millisecond, 0
+	throttleSpeedup = time.Millisecond
+	throttleSpeedupAfter = 3
+	usernameHash = "unittest-aimd-fast"
+	useTempCache(t)
+
+	srv := cachingTestServer(t, 10) // 10 codes, all redeem cleanly
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+	if got := c.CurrentInterval(); got != 2*time.Millisecond {
+		t.Errorf("a clean run should hold the throttle at the 2ms floor, got %s", got)
 	}
 }
 

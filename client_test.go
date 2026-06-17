@@ -678,6 +678,42 @@ func TestThrottlePacing(t *testing.T) {
 	}
 }
 
+func TestThrottleSlowdownSpeedup(t *testing.T) {
+	c, _ := NewHttpClient()
+	c.SetThrottle(100*time.Millisecond, 0)
+	if c.CurrentInterval() != 100*time.Millisecond {
+		t.Fatalf("SetThrottle should set the interval (and floor), got %s", c.CurrentInterval())
+	}
+
+	// Slowdown multiplies the interval, capped at ceil.
+	c.Slowdown(2.0, time.Second)
+	if c.CurrentInterval() != 200*time.Millisecond {
+		t.Errorf("expected 200ms after 2x slowdown, got %s", c.CurrentInterval())
+	}
+	c.Slowdown(10, 500*time.Millisecond) // 200ms*10 = 2s, capped at 500ms
+	if c.CurrentInterval() != 500*time.Millisecond {
+		t.Errorf("expected slowdown capped at 500ms, got %s", c.CurrentInterval())
+	}
+
+	// Speedup subtracts, floored at the configured base (100ms).
+	c.Speedup(150 * time.Millisecond) // 500 - 150 = 350
+	if c.CurrentInterval() != 350*time.Millisecond {
+		t.Errorf("expected 350ms after speedup, got %s", c.CurrentInterval())
+	}
+	c.Speedup(time.Second) // would drop below the floor; clamp to 100ms
+	if c.CurrentInterval() != 100*time.Millisecond {
+		t.Errorf("expected clamp to floor 100ms, got %s", c.CurrentInterval())
+	}
+
+	// When pacing is disabled, both adjustments are no-ops.
+	c.SetThrottle(0, 0)
+	c.Slowdown(2, time.Second)
+	c.Speedup(time.Millisecond)
+	if c.CurrentInterval() != 0 {
+		t.Errorf("disabled pacing should stay 0, got %s", c.CurrentInterval())
+	}
+}
+
 func TestRateLimitedDetection(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

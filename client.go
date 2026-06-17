@@ -49,9 +49,12 @@ type HttpClient struct {
 	headers http.Header
 
 	// Request pacing (see SetThrottle). Zero minInterval disables pacing.
-	minInterval time.Duration
-	jitter      time.Duration
-	lastRequest time.Time
+	// minInterval adapts at runtime (see Slowdown/Speedup); minIntervalFloor is
+	// the configured base it never drops below.
+	minInterval      time.Duration
+	minIntervalFloor time.Duration
+	jitter           time.Duration
+	lastRequest      time.Time
 }
 
 type HttpResponse struct {
@@ -130,9 +133,43 @@ func (client *HttpClient) SetDefaultHeader(k, v string) {
 // SetThrottle paces outgoing requests so consecutive calls are spaced at least
 // minInterval apart, plus a random amount up to jitter. This keeps bulk
 // redemption under SHiFT's rate limits and makes traffic look less bot-like.
+// minInterval also becomes the floor that adaptive speed-ups never drop below.
 func (client *HttpClient) SetThrottle(minInterval, jitter time.Duration) {
 	client.minInterval = minInterval
+	client.minIntervalFloor = minInterval
 	client.jitter = jitter
+}
+
+// CurrentInterval reports the current minimum request spacing, which adapts at
+// runtime via Slowdown/Speedup.
+func (client *HttpClient) CurrentInterval() time.Duration {
+	return client.minInterval
+}
+
+// Slowdown widens the request spacing multiplicatively (on a rate-limit signal),
+// capped at ceil. The jitter is unchanged. A no-op when pacing is disabled.
+func (client *HttpClient) Slowdown(factor float64, ceil time.Duration) {
+	if client.minInterval <= 0 || factor <= 1 {
+		return
+	}
+	next := time.Duration(float64(client.minInterval) * factor)
+	if next > ceil {
+		next = ceil
+	}
+	client.minInterval = next
+}
+
+// Speedup narrows the request spacing additively (after a clean streak), never
+// below the floor set by SetThrottle. A no-op when pacing is disabled.
+func (client *HttpClient) Speedup(step time.Duration) {
+	if client.minInterval <= 0 || step <= 0 {
+		return
+	}
+	if next := client.minInterval - step; next > client.minIntervalFloor {
+		client.minInterval = next
+	} else {
+		client.minInterval = client.minIntervalFloor
+	}
 }
 
 // pace sleeps as needed to honour the configured request spacing.

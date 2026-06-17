@@ -58,6 +58,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 * Crash- and Ctrl-C-safe progress: a SIGINT/SIGTERM stops the run cleanly between codes
   with progress saved, and the cache is also checkpointed periodically mid-run so a hard
   crash loses at most a handful of redemptions instead of the whole run.
+* Adaptive (AIMD) request throttle on bulk runs: instead of a fixed pace, the request
+  spacing now self-tunes — it widens multiplicatively on each non-200 code query (SHiFT's
+  throttle signal) and narrows again after a clean streak, converging on the fastest rate
+  SHiFT tolerates without tripping the rate limit. `-v` prints the interval as it adapts.
 
 ## v2.2.13 - 2022-01-18
 ### Added

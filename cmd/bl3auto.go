@@ -84,6 +84,18 @@ var (
 	rampupThrottleJitter = 1500 * time.Millisecond
 )
 
+// Adaptive (AIMD) throttle. On a bulk run the request spacing self-tunes to the
+// rate SHiFT tolerates: it widens multiplicatively on each non-200 code query (a
+// throttle signal) up to throttleCeil, and narrows by throttleSpeedup after every
+// throttleSpeedupAfter clean queries, never below the configured base. All vars so
+// tests can shrink them.
+var (
+	throttleCeil         = 8 * time.Second
+	throttleSlowFactor   = 1.5
+	throttleSpeedup      = 200 * time.Millisecond
+	throttleSpeedupAfter = 8
+)
+
 // bulkThreshold is the candidate-code count at or above which a run is treated
 // as "bulk": only then do we pace requests and back off on rate limits. A
 // single --shift-code redemption stays fast and un-throttled.
@@ -524,6 +536,7 @@ func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) {
 	reachedCount := false
 	interrupted := false
 	consecutive := 0  // consecutive non-200 code-query responses (see --rampup)
+	cleanStreak := 0  // consecutive clean (200) code queries (drives adaptive speed-up)
 	successCount := 0 // new successful redemptions this run (see --count)
 
 codeLoop:
@@ -569,6 +582,14 @@ codeLoop:
 		var statusErr *bl3.CodeQueryStatusError
 		if errors.As(err, &statusErr) {
 			consecutive++
+			cleanStreak = 0
+			if bulk {
+				// AIMD: ease off the pace so the run self-tunes to a sustainable rate.
+				client.Slowdown(throttleSlowFactor, throttleCeil)
+				if client.Verbose {
+					_, _ = fmt.Fprintf(os.Stderr, "[verbose] non-200 query; throttle now %s\n", client.CurrentInterval())
+				}
+			}
 			fmt.Println("Skipping '" + code + "': " + err.Error())
 			if bulk && consecutive >= stopAfter {
 				stoppedShadowban = true
@@ -589,6 +610,17 @@ codeLoop:
 			continue
 		}
 		consecutive = 0
+		if bulk {
+			// AIMD: a clean streak means we can cautiously speed back up.
+			cleanStreak++
+			if cleanStreak >= throttleSpeedupAfter {
+				client.Speedup(throttleSpeedup)
+				if client.Verbose {
+					_, _ = fmt.Fprintf(os.Stderr, "[verbose] clean streak; throttle now %s\n", client.CurrentInterval())
+				}
+				cleanStreak = 0
+			}
+		}
 		if len(forms) == 0 {
 			fmt.Println("'" + code + "': " + summarize(reason))
 			// An expired code is terminal: record it so it is never re-queried.

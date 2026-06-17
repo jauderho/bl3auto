@@ -52,6 +52,11 @@ Run it with `--help` to view command line args that are supported.
 > or after months away, to pace requests and stop cleanly instead of getting
 > shadowbanned. bl3auto reminds you when it looks like a first or long-overdue run.
 
+On bulk runs the request pacing is **adaptive**: it automatically slows down when SHiFT
+starts throttling (302s) and speeds back up after a clean streak, so it settles on the
+fastest rate SHiFT tolerates without you having to tune anything. `-v` shows the interval
+adjusting in real time.
+
 #### Platforms
 
 bl3auto redeems each code on **every platform linked to your SHiFT account** — the
