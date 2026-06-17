@@ -54,12 +54,11 @@ func redemptionFormHTML(code string, services ...string) string {
 
 // --- HTTP plumbing -------------------------------------------------------
 
-func TestHttpClientGetHeadAndDefaults(t *testing.T) {
-	var gotUA, gotReferer, gotMethod string
+func TestHttpClientGetAndDefaults(t *testing.T) {
+	var gotUA, gotReferer string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
 		gotReferer = r.Header.Get("Referer")
-		gotMethod = r.Method
 		_, _ = io.WriteString(w, "hello")
 	}))
 	defer srv.Close()
@@ -87,13 +86,6 @@ func TestHttpClientGetHeadAndDefaults(t *testing.T) {
 	}
 	if gotReferer != "https://override.example/" {
 		t.Errorf("per-request Referer should win, got %q", gotReferer)
-	}
-
-	if _, err := c.Head(srv.URL); err != nil {
-		t.Fatalf("Head: %v", err)
-	}
-	if gotMethod != "HEAD" {
-		t.Errorf("expected HEAD, got %q", gotMethod)
 	}
 }
 
@@ -168,11 +160,9 @@ func TestFetchBytesGzip(t *testing.T) {
 	}
 }
 
-func TestBodyAsJsonAndHtmlDoc(t *testing.T) {
+func TestBodyAsHtmlDoc(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/json":
-			_, _ = io.WriteString(w, `{"a":1}`)
 		case "/html":
 			_, _ = io.WriteString(w, metaTokenPage)
 		default:
@@ -182,19 +172,8 @@ func TestBodyAsJsonAndHtmlDoc(t *testing.T) {
 	defer srv.Close()
 	c, _ := NewHttpClient()
 
-	res, _ := c.Get(srv.URL + "/json")
-	jq, err := res.BodyAsJson()
-	if err != nil {
-		t.Fatalf("BodyAsJson: %v", err)
-	}
-	var v float64
-	jq.From("a").Out(&v)
-	if v != 1 {
-		t.Errorf("expected a=1, got %v", v)
-	}
-
-	res2, _ := c.Get(srv.URL + "/html")
-	doc, err := res2.BodyAsHtmlDoc()
+	res, _ := c.Get(srv.URL + "/html")
+	doc, err := res.BodyAsHtmlDoc()
 	if err != nil {
 		t.Fatalf("BodyAsHtmlDoc: %v", err)
 	}
@@ -202,8 +181,8 @@ func TestBodyAsJsonAndHtmlDoc(t *testing.T) {
 		t.Errorf("meta token = %q", tok)
 	}
 
-	res3, _ := c.Get(srv.URL + "/missing")
-	if _, err := res3.BodyAsHtmlDoc(); err == nil {
+	res2, _ := c.Get(srv.URL + "/missing")
+	if _, err := res2.BodyAsHtmlDoc(); err == nil {
 		t.Error("BodyAsHtmlDoc should error on non-200")
 	}
 }
@@ -684,13 +663,7 @@ func TestStatusFromTextAllBranches(t *testing.T) {
 	}
 }
 
-func TestStringSetAndContains(t *testing.T) {
-	s := StringSet{}
-	s.Add("steam")
-	if _, ok := s["steam"]; !ok {
-		t.Error("StringSet.Add failed")
-	}
-
+func TestShiftCodeMapContains(t *testing.T) {
 	m := ShiftCodeMap{"CODE": {"steam", "epic"}}
 	if !m.Contains("CODE", "steam") {
 		t.Error("Contains should be true for steam")

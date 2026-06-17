@@ -24,11 +24,9 @@ type ShiftConfig struct {
 
 // ShiftCode is a single code parsed from either code-list format.
 type ShiftCode struct {
-	Code     string `json:"code"`
-	Game     string `json:"game"`
-	Platform string `json:"platform"`
-	Reward   string `json:"reward"`
-	Expired  bool   `json:"expired"`
+	Code    string `json:"code"`
+	Game    string `json:"game"`
+	Expired bool   `json:"expired"`
 }
 
 // ShiftCodeMap tracks which services a code has been redeemed on (the on-disk cache).
@@ -55,7 +53,7 @@ type RedemptionForm struct {
 func parseCodeList(body []byte, dropExpired bool) []ShiftCode {
 	parsed := make([]ShiftCode, 0)
 	JsonFromBytes(body).From("[0].codes").
-		Select("code", "game", "platform", "reward", "expired").Out(&parsed)
+		Select("code", "game", "expired").Out(&parsed)
 
 	codes := make([]ShiftCode, 0, len(parsed))
 	for _, c := range parsed {

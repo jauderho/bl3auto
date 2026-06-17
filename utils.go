@@ -4,12 +4,6 @@ import (
 	"github.com/thedevsaddam/gojsonq/v2"
 )
 
-type StringSet map[string]struct{}
-
-func (set StringSet) Add(s string) {
-	set[s] = struct{}{}
-}
-
 func JsonFromString(s string) *gojsonq.JSONQ {
 	return gojsonq.New().JSONString(s)
 }

@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/thedevsaddam/gojsonq/v2"
 )
 
 // ErrRateLimited is returned when SHiFT responds with 429 (Too Many Requests)
@@ -143,17 +142,6 @@ func (response *HttpResponse) BodyAsHtmlDoc() (*goquery.Document, error) {
 	return doc, nil
 }
 
-func (response *HttpResponse) BodyAsJson() (*gojsonq.JSONQ, error) {
-	defer func() { _ = response.Body.Close() }()
-
-	bodyBytes, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, errors.New("invalid response json")
-	}
-
-	return JsonFromBytes(bodyBytes), nil
-}
-
 func getResponse(res *http.Response, err error) (*HttpResponse, error) {
 	if err != nil {
 		return nil, err
@@ -253,14 +241,6 @@ func (client *HttpClient) GetWithHeaders(rawurl string, headers map[string]strin
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
-	}
-	return client.Do(req)
-}
-
-func (client *HttpClient) Head(rawurl string) (*HttpResponse, error) {
-	req, err := http.NewRequest("HEAD", rawurl, nil)
-	if err != nil {
-		return nil, err
 	}
 	return client.Do(req)
 }
