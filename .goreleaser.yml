@@ -89,6 +89,7 @@ homebrew_casks:
   - repository:
       owner: jauderho
       name: homebrew-bl3auto
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     commit_author:
       name: Jauder Ho
       email: jauderho@users.noreply.github.com
