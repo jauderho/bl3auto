@@ -171,7 +171,7 @@ func withBackoff(retry bool, op func() error) (err error, stop bool) {
 }
 
 // gross but effective for now
-const version = "2.3.0"
+const version = "2.3.1"
 
 const SUCCESS = "success!"
 const NOTFOUND = "not found."
