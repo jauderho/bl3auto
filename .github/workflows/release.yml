@@ -43,6 +43,7 @@ jobs:
             storage.googleapis.com:443
             token.actions.githubusercontent.com:443
             toolbox-data.anchore.io:443
+            tuf-repo-cdn.sigstore.dev:443
             uploads.github.com:443
             v1.fulcio.sigstore.dev:443
 
@@ -102,4 +103,3 @@ jobs:
         env:
           #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.HOMEBREW }}
-          COSIGN_EXPERIMENTAL: 1
