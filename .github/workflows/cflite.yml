@@ -14,7 +14,9 @@ jobs:
    strategy:
      fail-fast: false
      matrix:
-       sanitizer: [address, undefined, memory]
+       # Go only supports the address sanitizer under OSS-Fuzz/ClusterFuzzLite.
+       # memory (MSan) and undefined (UBSan) are C/C++ only and fail on Go.
+       sanitizer: [address]
 
    steps:
    - name: Harden Runner

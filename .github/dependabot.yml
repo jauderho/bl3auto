@@ -28,3 +28,13 @@ updates:
       interval: "daily"
     commit-message:
       prefix: "docker:"
+
+  # Maintain the ClusterFuzzLite builder image (not covered by "/" above,
+  # which only scans the root Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/.clusterfuzzlite"
+    open-pull-requests-limit: 20
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "docker:"
