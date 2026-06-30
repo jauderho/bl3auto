@@ -77,6 +77,11 @@ var (
 	backoffMax   = 60 * time.Second
 )
 
+// maxRetryAttempts caps how many times a 302'd (throttled) code is re-queued to be
+// retried at the end of a bulk run before it is given up. Retries flow through the main
+// loop and remain subject to its backoff/stop logic. A var so tests can change it.
+var maxRetryAttempts = 5
+
 // --rampup request pacing: much slower spacing than the normal bulk throttle, for a
 // first run or after a long gap when SHiFT throttles aggressively.
 var (
@@ -171,7 +176,7 @@ func withBackoff(retry bool, op func() error) (err error, stop bool) {
 }
 
 // gross but effective for now
-const version = "2.3.2"
+const version = "2.3.3"
 
 const SUCCESS = "success!"
 const NOTFOUND = "not found."
@@ -561,9 +566,26 @@ func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) {
 	consecutive := 0  // consecutive non-200 code-query responses (see --rampup)
 	cleanStreak := 0  // consecutive clean (200) code queries (drives adaptive speed-up)
 	successCount := 0 // new successful redemptions this run (see --count)
+	gaveUp := 0       // codes dropped after exhausting their retries (see maxRetryAttempts)
+
+	// Process codes from a FIFO work queue rather than a single pass: a code throttled
+	// with a 302 is re-appended to the back (up to maxRetryAttempts times) so it is
+	// retried at the end of the run, after every not-yet-tried code, through this same
+	// loop body (and thus the same backoff/throttle/stop logic).
+	type queuedCode struct {
+		sc       bl3.ShiftCode
+		attempts int // retries already performed (times re-queued)
+	}
+	queue := make([]queuedCode, len(codes))
+	for i, sc := range codes {
+		queue[i] = queuedCode{sc: sc}
+	}
 
 codeLoop:
-	for _, sc := range codes {
+	for len(queue) > 0 {
+		item := queue[0]
+		queue = queue[1:]
+		sc := item.sc
 		code := sc.Code
 
 		// Bail out cleanly between codes if the user interrupted (Ctrl-C); the
@@ -619,7 +641,20 @@ codeLoop:
 					_, _ = fmt.Fprintf(os.Stderr, "[verbose] non-200 query; throttle now %s\n", client.CurrentInterval())
 				}
 			}
-			fmt.Println("Skipping '" + code + "': " + err.Error())
+			// Re-queue the code to retry at the end of the run, unless it has exhausted
+			// its retries (or this isn't a bulk run). Retries still hit the backoff/stop
+			// handling below.
+			if bulk && item.attempts < maxRetryAttempts {
+				item.attempts++
+				queue = append(queue, item)
+				fmt.Printf("Skipping '%s' for now (%s); will retry (attempt %d/%d).\n",
+					code, err.Error(), item.attempts, maxRetryAttempts)
+			} else {
+				if bulk {
+					gaveUp++
+				}
+				fmt.Println("Skipping '" + code + "': " + err.Error())
+			}
 			if bulk && consecutive >= stopAfter {
 				stoppedShadowban = true
 				break codeLoop
@@ -749,6 +784,10 @@ codeLoop:
 			fmt.Println("No new SHIFT codes at this time. Try again later.")
 		}
 		// Still bump lastRun below so the stale-run warning tracks this attempt.
+	}
+
+	if gaveUp > 0 {
+		fmt.Printf("%d code(s) still throttled after %d retries; re-run later to try them again.\n", gaveUp, maxRetryAttempts)
 	}
 
 	// On any non-dryrun run, rewrite the cache: this persists newly-redeemed codes,

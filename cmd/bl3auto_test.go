@@ -29,10 +29,14 @@ func shrinkBackoff(t *testing.T, retries int) {
 	rtb, rtj, bb, bm, ba, sa := rampupThrottleBase, rampupThrottleJitter,
 		backoffBase, backoffMax, backoffAfter, stopAfter
 	tc, tsf, tsp, tsa := throttleCeil, throttleSlowFactor, throttleSpeedup, throttleSpeedupAfter
+	mra := maxRetryAttempts
 	rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = time.Millisecond, time.Millisecond, retries
 	throttleBase, throttleJitter = 0, 0
 	rampupThrottleBase, rampupThrottleJitter = 0, 0
 	backoffBase, backoffMax = 0, 0
+	// Disable the retry queue by default so existing single-pass assertions hold; a test
+	// that exercises retries opts in by setting maxRetryAttempts after calling this.
+	maxRetryAttempts = 0
 	t.Cleanup(func() {
 		rateLimitBaseWait, rateLimitMaxWait, rateLimitRetries = ob, om, or
 		throttleBase, throttleJitter = tb, tj
@@ -40,6 +44,7 @@ func shrinkBackoff(t *testing.T, retries int) {
 		backoffBase, backoffMax = bb, bm
 		backoffAfter, stopAfter = ba, sa
 		throttleCeil, throttleSlowFactor, throttleSpeedup, throttleSpeedupAfter = tc, tsf, tsp, tsa
+		maxRetryAttempts = mra
 	})
 }
 
@@ -448,6 +453,105 @@ func TestRampupCounterResetsOn200(t *testing.T) {
 	}
 	if got := strings.Count(out, "Skipping "); got != 8 { // codes not divisible by 3
 		t.Errorf("expected 8 skips across %d codes, got %d:\n%s", n, got, out)
+	}
+}
+
+// TestDoShiftRetriesThrottledCodesAtEndOfRun: a code that 302s on its first query is
+// re-queued and retried at the end of the run, where a now-200 response lets it redeem.
+func TestDoShiftRetriesThrottledCodesAtEndOfRun(t *testing.T) {
+	shrinkBackoff(t, 1)
+	maxRetryAttempts = 5
+	backoffAfter, stopAfter = 100, 100 // don't back off or stop during this test
+
+	const n = 3
+	listJSON := rampupListJSON(n)
+	seen := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			code := r.URL.Query().Get("code")
+			seen[code]++
+			if seen[code] == 1 {
+				// First query for this code: throttle with a 302.
+				w.Header().Set("Location", "/home")
+				w.WriteHeader(http.StatusFound)
+				return
+			}
+			// Retry: hand back a redeemable steam form.
+			_, _ = io.WriteString(w, `<form class="new_archway_code_redemption" id="new_archway_code_redemption">`+
+				`<input id="archway_code_redemption_service" name="archway_code_redemption[service]" value="steam">`+
+				`<input name="archway_code_redemption[code]" value="`+code+`"></form>`)
+		case "/code_redemptions":
+			_, _ = io.WriteString(w, `<div class="alert">Your code was successfully redeemed</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	usernameHash = "unittest-retry"
+	cacheDir := useTempCache(t)
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{rampup: true}) })
+
+	if !strings.Contains(out, "will retry") {
+		t.Errorf("expected a retry notice, got:\n%s", out)
+	}
+	if strings.Contains(out, "Stopped after") {
+		t.Errorf("run should not hit the shadowban stop, got:\n%s", out)
+	}
+	folder := &configdir.Config{Path: cacheDir, Type: configdir.Global}
+	cached, _, _ := readRedeemedCache(folder, "unittest-retry-shift-codes.json")
+	for i := 1; i <= n; i++ {
+		code := fmt.Sprintf("CODE%02d", i)
+		if !cached.Contains(code, "steam") {
+			t.Errorf("expected %s redeemed on steam after retry; cache=%v", code, cached)
+		}
+		if seen[code] != 2 {
+			t.Errorf("expected %s queried twice (302 then 200), got %d", code, seen[code])
+		}
+	}
+}
+
+// TestDoShiftGivesUpAfterMaxRetries: a code that 302s forever is queried exactly
+// 1+maxRetryAttempts times, then dropped (no infinite loop), with a closing note.
+func TestDoShiftGivesUpAfterMaxRetries(t *testing.T) {
+	shrinkBackoff(t, 1)
+	maxRetryAttempts = 3
+	backoffAfter, stopAfter = 100, 100 // never back off or stop on the consecutive count
+
+	listJSON := rampupListJSON(1)
+	queries := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			queries++
+			w.Header().Set("Location", "/home")
+			w.WriteHeader(http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	usernameHash = "unittest-giveup"
+	useTempCache(t)
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{rampup: true}) })
+
+	if want := 1 + maxRetryAttempts; queries != want {
+		t.Errorf("expected %d queries (initial + retries), got %d", want, queries)
+	}
+	if !strings.Contains(out, "still throttled after") {
+		t.Errorf("expected give-up note, got:\n%s", out)
 	}
 }
 
