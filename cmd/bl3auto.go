@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -435,7 +436,50 @@ func writeRedeemedCache(folder *configdir.Config, configFilename string, codes b
 	if err != nil {
 		return err
 	}
-	return folder.WriteFile(configFilename, data)
+	return atomicWriteCache(folder, configFilename, data)
+}
+
+// atomicWriteCache writes data to fileName inside folder atomically: it writes a temp
+// file in the same directory, flushes it to disk, then renames it over the destination.
+// A POSIX rename is atomic, so a crash mid-write (kill -9, a full disk, power loss) can
+// never truncate or corrupt the existing cache — a reader always sees either the old
+// complete file or the new one. A normal Ctrl-C is caught and the run finishes this
+// write before exiting, so it is unaffected.
+func atomicWriteCache(folder *configdir.Config, fileName string, data []byte) (err error) {
+	if err = folder.CreateParentDir(fileName); err != nil {
+		return err
+	}
+	dir := folder.Path
+	dest := filepath.Join(dir, fileName)
+
+	tmp, err := os.CreateTemp(dir, fileName+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	// Clean up the temp file if anything below fails before the rename completes.
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err = tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	// configdir.WriteFile used 0644; preserve that (CreateTemp makes the file 0600).
+	if err = os.Chmod(tmpName, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, dest)
 }
 
 func loadRedeemedCodes(folder *configdir.Config, configFilename string) (bl3.ShiftCodeMap, time.Time, bool) {
@@ -935,6 +979,13 @@ func main() {
 		refresh:         refresh,
 		count:           count,
 	})
+
+	// On Ctrl-C/SIGTERM, doShift has already stopped cleanly and saved progress; exit
+	// promptly rather than making the user sit through the countdown.
+	if ctx.Err() != nil {
+		fmt.Println("Interrupted; exiting.")
+		return
+	}
 
 	exit()
 }

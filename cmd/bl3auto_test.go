@@ -211,6 +211,42 @@ func TestDoShiftInterruptSavesProgress(t *testing.T) {
 	}
 }
 
+// TestAtomicWriteCacheReplacesCleanly verifies the cache write is atomic: it overwrites
+// an existing file via rename and leaves no temp files behind, so a crash mid-write
+// (kill -9, full disk, power loss) can never truncate or corrupt the cache.
+func TestAtomicWriteCacheReplacesCleanly(t *testing.T) {
+	dir := t.TempDir()
+	folder := &configdir.Config{Path: dir, Type: configdir.Global}
+	const fn = "atomic-shift-codes.json"
+
+	// Seed an existing cache, then overwrite it with different contents.
+	if err := writeRedeemedCache(folder, fn, bl3.ShiftCodeMap{"OLD": {"steam"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRedeemedCache(folder, fn, bl3.ShiftCodeMap{"NEW": {"epic"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	// The directory must hold exactly the destination file — no leftover temp files.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != fn {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("expected only %q in cache dir, got %v", fn, names)
+	}
+
+	// The latest write must be readable and complete (valid JSON, new content only).
+	codes, _, existed := readRedeemedCache(folder, fn)
+	if !existed || !codes.Contains("NEW", "epic") || codes.Contains("OLD", "steam") {
+		t.Errorf("expected the latest cache content, got existed=%v codes=%v", existed, codes)
+	}
+}
+
 func TestRedeemedCodesRoundTrip(t *testing.T) {
 	folder := &configdir.Config{Path: t.TempDir(), Type: configdir.Global}
 	const fn = "test-shift-codes.json"
