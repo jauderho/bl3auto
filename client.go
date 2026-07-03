@@ -1,6 +1,7 @@
 package bl3auto
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,10 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+// requestTimeout bounds every outgoing HTTP request (SHiFT and the GitHub-hosted
+// config/code lists) so a stalled server can never hang a run indefinitely.
+const requestTimeout = 30 * time.Second
 
 // ErrRateLimited is returned when SHiFT responds with 429 (Too Many Requests)
 // or 503 (Service Unavailable). Callers should back off rather than retry hard.
@@ -108,7 +113,8 @@ func NewHttpClient() (*HttpClient, error) {
 
 	return &HttpClient{
 		Client: http.Client{
-			Jar: jar,
+			Jar:     jar,
+			Timeout: requestTimeout,
 			// Don't auto-follow redirects: the SHiFT login (302) and code
 			// redemption (302) flows need to inspect the Location header and
 			// drive the redirect chain manually, mirroring autoshift.
@@ -200,23 +206,33 @@ func (client *HttpClient) Speedup(step time.Duration) {
 	}
 }
 
-// pace sleeps as needed to honour the configured request spacing.
-func (client *HttpClient) pace() {
+// pace sleeps as needed to honour the configured request spacing, aborting
+// early (returning ctx.Err()) if ctx is cancelled first.
+func (client *HttpClient) pace(ctx context.Context) error {
 	if client.minInterval <= 0 {
-		return
+		return nil
 	}
 	target := client.minInterval
 	if client.jitter > 0 {
 		target += time.Duration(rand.Int64N(int64(client.jitter) + 1))
 	}
 	if d := time.Until(client.lastRequest.Add(target)); d > 0 {
-		time.Sleep(d)
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+		}
 	}
 	client.lastRequest = time.Now()
+	return nil
 }
 
-func (client *HttpClient) Do(req *http.Request) (*HttpResponse, error) {
-	client.pace()
+func (client *HttpClient) Do(ctx context.Context, req *http.Request) (*HttpResponse, error) {
+	if err := client.pace(ctx); err != nil {
+		return nil, err
+	}
 	// Default headers only fill in what the caller hasn't set, so per-request
 	// headers (Referer, X-CSRF-Token, X-Requested-With, ...) are preserved.
 	for k, v := range client.headers {
@@ -227,27 +243,27 @@ func (client *HttpClient) Do(req *http.Request) (*HttpResponse, error) {
 			req.Header.Set(k, x)
 		}
 	}
-	return getResponse(client.Client.Do(req))
+	return getResponse(client.Client.Do(req.WithContext(ctx)))
 }
 
-func (client *HttpClient) Get(rawurl string) (*HttpResponse, error) {
-	return client.GetWithHeaders(rawurl, nil)
+func (client *HttpClient) Get(ctx context.Context, rawurl string) (*HttpResponse, error) {
+	return client.GetWithHeaders(ctx, rawurl, nil)
 }
 
-func (client *HttpClient) GetWithHeaders(rawurl string, headers map[string]string) (*HttpResponse, error) {
-	req, err := http.NewRequest("GET", rawurl, nil)
+func (client *HttpClient) GetWithHeaders(ctx context.Context, rawurl string, headers map[string]string) (*HttpResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", rawurl, nil)
 	if err != nil {
 		return nil, err
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	return client.Do(req)
+	return client.Do(ctx, req)
 }
 
 // PostForm submits url-encoded form data with optional per-request headers.
-func (client *HttpClient) PostForm(rawurl string, data url.Values, headers map[string]string) (*HttpResponse, error) {
-	req, err := http.NewRequest("POST", rawurl, strings.NewReader(data.Encode()))
+func (client *HttpClient) PostForm(ctx context.Context, rawurl string, data url.Values, headers map[string]string) (*HttpResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", rawurl, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -255,8 +271,13 @@ func (client *HttpClient) PostForm(rawurl string, data url.Values, headers map[s
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	return client.Do(req)
+	return client.Do(ctx, req)
 }
+
+// fetchClient is a dedicated, bounded-timeout HTTP client used by fetchBytes.
+// It follows redirects (the default CheckRedirect), unlike the no-redirect
+// SHiFT client, since GitHub raw URLs may 302 to a CDN.
+var fetchClient = &http.Client{Timeout: requestTimeout}
 
 // fetchBytes retrieves a public URL using the default (redirect-following) HTTP
 // client. Used for the remote config and SHiFT code lists hosted on GitHub raw,
@@ -266,8 +287,12 @@ func (client *HttpClient) PostForm(rawurl string, data url.Values, headers map[s
 // "Accept-Encoding: gzip" automatically and transparently decompresses the
 // response, so the ~234 KB code list is fetched gzip-compressed for free.
 // Setting the header manually would disable that automatic decompression.
-func fetchBytes(rawurl string) ([]byte, error) {
-	resp, err := http.Get(rawurl) //nolint:gosec // URLs come from trusted config
+func fetchBytes(ctx context.Context, rawurl string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawurl, nil) //nolint:gosec // URLs come from trusted config
+	if err != nil {
+		return nil, err
+	}
+	resp, err := fetchClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -288,13 +313,13 @@ type Bl3Client struct {
 // NewBl3Client builds a client from config. When configPath is non-empty the
 // config is read from that local file (useful for testing new URLs before they
 // are merged); otherwise it is fetched from the published remote config.
-func NewBl3Client(configPath string) (*Bl3Client, error) {
+func NewBl3Client(ctx context.Context, configPath string) (*Bl3Client, error) {
 	client, err := NewHttpClient()
 	if err != nil {
 		return nil, errors.New("failed to start client")
 	}
 
-	config, err := loadConfig(configPath)
+	config, err := loadConfig(ctx, configPath)
 	if err != nil {
 		return nil, err
 	}
@@ -322,20 +347,20 @@ func configComplete(c Bl3Config) bool {
 // as-is. Otherwise the published remote config is tried first (so endpoints can
 // be hot-fixed without a release); if it is unreachable, unparseable, or
 // incompatible with this binary, the embedded config.json is used instead.
-func loadConfig(configPath string) (Bl3Config, error) {
+func loadConfig(ctx context.Context, configPath string) (Bl3Config, error) {
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			return Bl3Config{}, errors.New("failed to read config '" + configPath + "': " + err.Error())
+			return Bl3Config{}, fmt.Errorf("failed to read config '%s': %w", configPath, err)
 		}
 		config := Bl3Config{}
 		if err := json.Unmarshal(data, &config); err != nil {
-			return Bl3Config{}, errors.New("failed to parse config '" + configPath + "': " + err.Error())
+			return Bl3Config{}, fmt.Errorf("failed to parse config '%s': %w", configPath, err)
 		}
 		return config, nil
 	}
 
-	if data, err := fetchBytes(remoteConfigUrl); err == nil {
+	if data, err := fetchBytes(ctx, remoteConfigUrl); err == nil {
 		remote := Bl3Config{}
 		if json.Unmarshal(data, &remote) == nil && configComplete(remote) {
 			return remote, nil
@@ -345,7 +370,7 @@ func loadConfig(configPath string) (Bl3Config, error) {
 	// Remote was missing or incompatible; use the config baked into the binary.
 	config := Bl3Config{}
 	if err := json.Unmarshal(embeddedConfig, &config); err != nil {
-		return Bl3Config{}, errors.New("failed to parse embedded config: " + err.Error())
+		return Bl3Config{}, fmt.Errorf("failed to parse embedded config: %w", err)
 	}
 	return config, nil
 }
@@ -359,8 +384,8 @@ func (client *Bl3Client) logf(format string, args ...any) {
 // getCsrfToken fetches a SHiFT page and extracts its CSRF token. SHiFT exposes
 // the token in a <meta name="csrf-token"> tag on rendered pages and in the
 // login form's hidden authenticity_token input; we try both.
-func (client *Bl3Client) getCsrfToken(pageUrl string) (string, error) {
-	res, err := client.Get(pageUrl)
+func (client *Bl3Client) getCsrfToken(ctx context.Context, pageUrl string) (string, error) {
+	res, err := client.Get(ctx, pageUrl)
 	if err != nil {
 		return "", err
 	}
@@ -382,11 +407,11 @@ func (client *Bl3Client) getCsrfToken(pageUrl string) (string, error) {
 // X-CSRF-Token header on GET requests (which Rails does not CSRF-validate), so a
 // single cached value is reused for the whole run; each redemption POST uses the
 // per-form authenticity_token instead.
-func (client *Bl3Client) redemptionToken() (string, error) {
+func (client *Bl3Client) redemptionToken(ctx context.Context) (string, error) {
 	if client.csrfToken != "" {
 		return client.csrfToken, nil
 	}
-	token, err := client.getCsrfToken(client.Config.BaseUrl + "/code_redemptions/new")
+	token, err := client.getCsrfToken(ctx, client.Config.BaseUrl+"/code_redemptions/new")
 	if err != nil {
 		return "", err
 	}
@@ -397,10 +422,10 @@ func (client *Bl3Client) redemptionToken() (string, error) {
 // Login authenticates against the GearBox SHiFT website: fetch the login page
 // for a CSRF token, then POST the credentials. On success the session cookie is
 // stored in the client's cookie jar and used for subsequent requests.
-func (client *Bl3Client) Login(username string, password string) error {
-	token, err := client.getCsrfToken(client.Config.HomeUrl)
+func (client *Bl3Client) Login(ctx context.Context, username string, password string) error {
+	token, err := client.getCsrfToken(ctx, client.Config.HomeUrl)
 	if err != nil {
-		return errors.New("failed to load login page: " + err.Error())
+		return fmt.Errorf("failed to load login page: %w", err)
 	}
 	client.logf("got login csrf token (%d chars)", len(token))
 
@@ -411,11 +436,11 @@ func (client *Bl3Client) Login(username string, password string) error {
 	form.Set("user[password]", password)
 	form.Set("commit", "SIGN IN")
 
-	res, err := client.PostForm(client.Config.LoginUrl, form, map[string]string{
+	res, err := client.PostForm(ctx, client.Config.LoginUrl, form, map[string]string{
 		"Referer": client.Config.HomeUrl,
 	})
 	if err != nil {
-		return errors.New("failed to submit login credentials: " + err.Error())
+		return fmt.Errorf("failed to submit login credentials: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	client.logf("POST %s -> %d", client.Config.LoginUrl, res.StatusCode)
@@ -437,6 +462,6 @@ func (client *Bl3Client) Login(username string, password string) error {
 		// SHiFT re-renders the login form (200) instead of redirecting on failure.
 		return errors.New("login failed - invalid email or password")
 	default:
-		return errors.New("unexpected login response status: " + strconv.Itoa(res.StatusCode))
+		return fmt.Errorf("unexpected login response status: %d", res.StatusCode)
 	}
 }

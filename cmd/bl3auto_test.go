@@ -169,6 +169,7 @@ func TestDoShiftInterruptSavesProgress(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	listJSON := rampupListJSON(5)
 	queries := 0
+	redemptions := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v2.json":
@@ -184,8 +185,14 @@ func TestDoShiftInterruptSavesProgress(t *testing.T) {
 					`<input name="archway_code_redemption[code]" value="`+code+`"></form>`)
 			}
 		case "/code_redemptions":
+			redemptions++
+			if redemptions == 2 {
+				// Simulate Ctrl-C once the first redemption (steam) has landed,
+				// just before the second (epic) would be answered — so the
+				// steam success isn't racing its own response body read.
+				cancel()
+			}
 			_, _ = io.WriteString(w, `<div class="alert">Your code was successfully redeemed</div>`)
-			cancel() // simulate Ctrl-C once the first redemption lands
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -328,7 +335,7 @@ func TestWithBackoff(t *testing.T) {
 
 	// Bulk: rate-limited a few times, then succeeds.
 	calls := 0
-	err, stop := withBackoff(true, func() error {
+	err, stop := withBackoff(t.Context(), true, func() error {
 		calls++
 		if calls < 3 {
 			return fmt.Errorf("%w", bl3.ErrRateLimited)
@@ -340,13 +347,13 @@ func TestWithBackoff(t *testing.T) {
 	}
 
 	// Bulk: persistent rate limiting → stop.
-	if _, stop := withBackoff(true, func() error { return fmt.Errorf("%w", bl3.ErrRateLimited) }); !stop {
+	if _, stop := withBackoff(t.Context(), true, func() error { return fmt.Errorf("%w", bl3.ErrRateLimited) }); !stop {
 		t.Error("persistent rate limit should signal stop")
 	}
 
 	// Non-bulk: a rate-limit error is returned immediately, no retry, no stop.
 	calls = 0
-	err, stop = withBackoff(false, func() error { calls++; return fmt.Errorf("%w", bl3.ErrRateLimited) })
+	err, stop = withBackoff(t.Context(), false, func() error { calls++; return fmt.Errorf("%w", bl3.ErrRateLimited) })
 	if stop || !errors.Is(err, bl3.ErrRateLimited) || calls != 1 {
 		t.Errorf("non-bulk: stop=%v err=%v calls=%d", stop, err, calls)
 	}
@@ -354,7 +361,7 @@ func TestWithBackoff(t *testing.T) {
 	// A non-rate-limit error returns immediately without retrying.
 	calls = 0
 	sentinel := errors.New("boom")
-	err, stop = withBackoff(true, func() error { calls++; return sentinel })
+	err, stop = withBackoff(t.Context(), true, func() error { calls++; return sentinel })
 	if stop || !errors.Is(err, sentinel) || calls != 1 {
 		t.Errorf("passthrough: stop=%v err=%v calls=%d", stop, err, calls)
 	}
@@ -976,7 +983,7 @@ func TestWithBackoffHonoursRetryAfter(t *testing.T) {
 
 	calls := 0
 	start := time.Now()
-	err, stop := withBackoff(true, func() error {
+	err, stop := withBackoff(t.Context(), true, func() error {
 		calls++
 		if calls == 1 {
 			return &bl3.RateLimitError{Status: 429, RetryAfter: 15 * time.Millisecond}
@@ -1169,7 +1176,7 @@ func newDoShiftClient(t *testing.T, baseURL string) *bl3.Bl3Client {
 	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c, err := bl3.NewBl3Client(path)
+	c, err := bl3.NewBl3Client(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}

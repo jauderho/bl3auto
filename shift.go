@@ -2,8 +2,10 @@ package bl3auto
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -13,6 +15,10 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+// pollInterval is how long pollRedemptionStatus waits between polls of the
+// async redemption-status endpoint.
+const pollInterval = 500 * time.Millisecond
 
 type ShiftConfig struct {
 	CodeListUrlV1     string `json:"codeListUrlV1"`
@@ -51,9 +57,15 @@ type RedemptionForm struct {
 // whose first element holds a "codes" array. When dropExpired is set (the v2
 // format, which carries an "expired" flag) expired entries are filtered out.
 func parseCodeList(body []byte, dropExpired bool) []ShiftCode {
-	parsed := make([]ShiftCode, 0)
-	JsonFromBytes(body).From("[0].codes").
-		Select("code", "game", "expired").Out(&parsed)
+	var groups []struct {
+		Codes []ShiftCode `json:"codes"`
+	}
+	_ = json.Unmarshal(body, &groups)
+
+	var parsed []ShiftCode
+	if len(groups) > 0 {
+		parsed = groups[0].Codes
+	}
 
 	codes := make([]ShiftCode, 0, len(parsed))
 	for _, c := range parsed {
@@ -67,10 +79,10 @@ func parseCodeList(body []byte, dropExpired bool) []ShiftCode {
 
 // GetShiftCodesV2 fetches and parses the newer ugoogalizer/mentalmars format.
 // Codes flagged as expired are filtered out unless AllowInactive is set.
-func (client *Bl3Client) GetShiftCodesV2() ([]ShiftCode, error) {
-	body, err := fetchBytes(client.Config.Shift.CodeListUrlV2)
+func (client *Bl3Client) GetShiftCodesV2(ctx context.Context) ([]ShiftCode, error) {
+	body, err := fetchBytes(ctx, client.Config.Shift.CodeListUrlV2)
 	if err != nil {
-		return nil, errors.New("failed to get v2 SHiFT code list: " + err.Error())
+		return nil, fmt.Errorf("failed to get v2 SHiFT code list: %w", err)
 	}
 	return parseCodeList(body, !client.Config.Shift.AllowInactive), nil
 }
@@ -78,10 +90,10 @@ func (client *Bl3Client) GetShiftCodesV2() ([]ShiftCode, error) {
 // GetShiftCodesV1 fetches and parses the original orcicorn format. This format
 // has no "expired" flag, so all codes are returned (the SHiFT site rejects
 // stale ones at redemption time).
-func (client *Bl3Client) GetShiftCodesV1() ([]ShiftCode, error) {
-	body, err := fetchBytes(client.Config.Shift.CodeListUrlV1)
+func (client *Bl3Client) GetShiftCodesV1(ctx context.Context) ([]ShiftCode, error) {
+	body, err := fetchBytes(ctx, client.Config.Shift.CodeListUrlV1)
 	if err != nil {
-		return nil, errors.New("failed to get v1 SHiFT code list: " + err.Error())
+		return nil, fmt.Errorf("failed to get v1 SHiFT code list: %w", err)
 	}
 	return parseCodeList(body, false), nil
 }
@@ -89,16 +101,16 @@ func (client *Bl3Client) GetShiftCodesV1() ([]ShiftCode, error) {
 // GetShiftCodes returns codes for the requested source. "v1"/"v2" force a single
 // source; any other value uses the default failover: try v2 first, fall back to
 // v1 if v2 errors or yields no codes. Results are de-duplicated by code.
-func (client *Bl3Client) GetShiftCodes(source string) ([]ShiftCode, error) {
+func (client *Bl3Client) GetShiftCodes(ctx context.Context, source string) ([]ShiftCode, error) {
 	switch source {
 	case "v1":
-		codes, err := client.GetShiftCodesV1()
+		codes, err := client.GetShiftCodesV1(ctx)
 		return dedupeCodes(codes), err
 	case "v2":
-		codes, err := client.GetShiftCodesV2()
+		codes, err := client.GetShiftCodesV2(ctx)
 		return dedupeCodes(codes), err
 	default:
-		codes, err := client.GetShiftCodesV2()
+		codes, err := client.GetShiftCodesV2(ctx)
 		if err == nil && len(codes) > 0 {
 			return dedupeCodes(codes), nil
 		}
@@ -107,7 +119,7 @@ func (client *Bl3Client) GetShiftCodes(source string) ([]ShiftCode, error) {
 		} else {
 			client.logf("v2 code source returned no codes; falling back to v1")
 		}
-		v1, v1err := client.GetShiftCodesV1()
+		v1, v1err := client.GetShiftCodesV1(ctx)
 		return dedupeCodes(v1), v1err
 	}
 }
@@ -152,13 +164,14 @@ func ServiceMatches(filter []string, service string) bool {
 // RedemptionForm per available service. When no redeemable form is present it
 // returns an empty slice and a human-readable reason (already redeemed, expired,
 // not available for this account, ...).
-func (client *Bl3Client) GetCodeRedemptionForms(code string) ([]RedemptionForm, string, error) {
-	token, err := client.redemptionToken()
+func (client *Bl3Client) GetCodeRedemptionForms(ctx context.Context, code string) ([]RedemptionForm, string, error) {
+	token, err := client.redemptionToken(ctx)
 	if err != nil {
-		return nil, "", errors.New("failed to get redemption token (are you logged in?): " + err.Error())
+		return nil, "", fmt.Errorf("failed to get redemption token (are you logged in?): %w", err)
 	}
 
 	res, err := client.GetWithHeaders(
+		ctx,
 		client.Config.Shift.RedemptionInfoUrl+"?code="+url.QueryEscape(code),
 		map[string]string{
 			"X-CSRF-Token":     token,
@@ -166,7 +179,7 @@ func (client *Bl3Client) GetCodeRedemptionForms(code string) ([]RedemptionForm, 
 		},
 	)
 	if err != nil {
-		return nil, "", errors.New("failed to query code: " + err.Error())
+		return nil, "", fmt.Errorf("failed to query code: %w", err)
 	}
 	bodyBytes, _ := io.ReadAll(res.Body)
 	_ = res.Body.Close()
@@ -221,24 +234,24 @@ func (client *Bl3Client) GetCodeRedemptionForms(code string) ([]RedemptionForm, 
 // RedeemForm submits a single redemption form and resolves its outcome. It
 // returns nil on success; otherwise an error whose message indicates the reason
 // (contains "already" / "expired" / etc. so callers can classify it).
-func (client *Bl3Client) RedeemForm(form RedemptionForm) error {
+func (client *Bl3Client) RedeemForm(ctx context.Context, form RedemptionForm) error {
 	data := url.Values{}
 	for k, v := range form.Fields {
 		data.Set(k, v)
 	}
 
-	res, err := client.PostForm(client.Config.Shift.RedemptionUrl, data, map[string]string{
+	res, err := client.PostForm(ctx, client.Config.Shift.RedemptionUrl, data, map[string]string{
 		"Referer": client.Config.Shift.RedemptionUrl + "/new",
 	})
 	if err != nil {
-		return errors.New("failed to submit redemption: " + err.Error())
+		return fmt.Errorf("failed to submit redemption: %w", err)
 	}
-	return client.resolveRedemption(res)
+	return client.resolveRedemption(ctx, res)
 }
 
 // resolveRedemption follows the post-redemption redirect chain and reads the
 // final status (either a polled JSON status or an inline alert).
-func (client *Bl3Client) resolveRedemption(res *HttpResponse) error {
+func (client *Bl3Client) resolveRedemption(ctx context.Context, res *HttpResponse) error {
 	visitedRedemption := false
 
 	for range 10 {
@@ -256,9 +269,9 @@ func (client *Bl3Client) resolveRedemption(res *HttpResponse) error {
 			if strings.Contains(location, "code_redemptions/") {
 				visitedRedemption = true
 			}
-			next, err := client.Get(client.absoluteUrl(location))
+			next, err := client.Get(ctx, client.absoluteUrl(location))
 			if err != nil {
-				return errors.New("failed to follow redemption redirect: " + err.Error())
+				return fmt.Errorf("failed to follow redemption redirect: %w", err)
 			}
 			res = next
 			continue
@@ -271,7 +284,7 @@ func (client *Bl3Client) resolveRedemption(res *HttpResponse) error {
 			}
 			if div := doc.Find("#check_redemption_status"); div.Length() > 0 {
 				if dataUrl, ok := div.Attr("data-url"); ok && dataUrl != "" {
-					return client.pollRedemptionStatus(dataUrl)
+					return client.pollRedemptionStatus(ctx, dataUrl)
 				}
 			}
 			return statusFromText(doc.Find(".alert").Text(), visitedRedemption)
@@ -282,18 +295,18 @@ func (client *Bl3Client) resolveRedemption(res *HttpResponse) error {
 
 // pollRedemptionStatus polls the async status endpoint until it reports a result
 // (or times out). The endpoint returns JSON with a "text" field once resolved.
-func (client *Bl3Client) pollRedemptionStatus(dataUrl string) error {
-	token, _ := client.redemptionToken()
+func (client *Bl3Client) pollRedemptionStatus(ctx context.Context, dataUrl string) error {
+	token, _ := client.redemptionToken(ctx)
 	full := client.absoluteUrl(dataUrl)
 
 	for range 6 {
-		res, err := client.GetWithHeaders(full, map[string]string{
+		res, err := client.GetWithHeaders(ctx, full, map[string]string{
 			"X-CSRF-Token":     token,
 			"X-Requested-With": "XMLHttpRequest",
 			"Accept":           "application/json, text/javascript, */*; q=0.01",
 		})
 		if err != nil {
-			return errors.New("failed to check redemption status: " + err.Error())
+			return fmt.Errorf("failed to check redemption status: %w", err)
 		}
 		body, _ := io.ReadAll(res.Body)
 		_ = res.Body.Close()
@@ -304,7 +317,13 @@ func (client *Bl3Client) pollRedemptionStatus(dataUrl string) error {
 		if json.Unmarshal(body, &payload) == nil && payload.Text != "" {
 			return statusFromText(payload.Text, true)
 		}
-		time.Sleep(500 * time.Millisecond)
+		t := time.NewTimer(pollInterval)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C:
+		}
 	}
 	return errors.New("redemption still pending - launch a SHiFT-enabled title and try again later")
 }

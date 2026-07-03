@@ -53,6 +53,7 @@ import (
 
 	bl3 "github.com/jauderho/bl3auto"
 	"github.com/shibukawa/configdir"
+	"golang.org/x/term"
 )
 
 // Request pacing and rate-limit backoff (sensible defaults; not user-tunable).
@@ -145,8 +146,9 @@ var resolveCacheFolder = func() *configdir.Config {
 // withBackoff runs op. When retry is true and op reports ErrRateLimited, it
 // retries with exponential backoff and returns stop=true if the limit persists
 // past rateLimitRetries (the caller should then halt the run). When retry is
-// false (small/non-bulk runs) a rate-limit error is returned as-is.
-func withBackoff(retry bool, op func() error) (err error, stop bool) {
+// false (small/non-bulk runs) a rate-limit error is returned as-is. The backoff
+// sleep aborts promptly (stop=true) if ctx is cancelled.
+func withBackoff(ctx context.Context, retry bool, op func() error) (err error, stop bool) {
 	wait := rateLimitBaseWait
 	for attempt := 1; ; attempt++ {
 		err = op()
@@ -169,7 +171,9 @@ func withBackoff(retry bool, op func() error) (err error, stop bool) {
 			}
 		}
 		fmt.Printf("Rate limited by SHiFT; backing off %s (retry %d/%d) . . .\n", sleep, attempt, rateLimitRetries)
-		time.Sleep(sleep)
+		if !sleepCtx(ctx, sleep) {
+			return err, true
+		}
 		if wait *= 2; wait > rateLimitMaxWait {
 			wait = rateLimitMaxWait
 		}
@@ -535,7 +539,10 @@ func runMigrate() {
 	fmt.Printf("Migrated %d codes to cache version %d (in place).\n", len(codes), cacheVersion)
 }
 
-func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) {
+// doShift runs the redemption loop and returns false only when it could not
+// even start (the initial code-fetch failed); true otherwise, including a
+// clean interrupt or a run that redeemed nothing.
+func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) bool {
 	cacheFolder := resolveCacheFolder()
 	configFilename := usernameHash + "-shift-codes.json"
 	redeemedCodes, lastRun, existed := loadRedeemedCodes(cacheFolder, configFilename)
@@ -567,10 +574,10 @@ func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) {
 			label += " (" + opts.source + ")"
 		}
 		fmt.Print(label + " . . . . . ")
-		list, err := client.GetShiftCodes(opts.source)
+		list, err := client.GetShiftCodes(ctx, opts.source)
 		if err != nil {
 			printError(err)
-			return
+			return false
 		}
 		fmt.Println(SUCCESS)
 
@@ -656,12 +663,16 @@ codeLoop:
 
 		var forms []bl3.RedemptionForm
 		var reason string
-		err, stop := withBackoff(bulk, func() error {
+		err, stop := withBackoff(ctx, bulk, func() error {
 			var e error
-			forms, reason, e = client.GetCodeRedemptionForms(code)
+			forms, reason, e = client.GetCodeRedemptionForms(ctx, code)
 			return e
 		})
 		if stop {
+			if ctx.Err() != nil {
+				interrupted = true
+				break codeLoop
+			}
 			rateLimited = true
 			break codeLoop
 		}
@@ -718,6 +729,10 @@ codeLoop:
 			continue
 		}
 		if err != nil {
+			if ctx.Err() != nil {
+				interrupted = true
+				break codeLoop
+			}
 			fmt.Println("Skipping '" + code + "': " + err.Error())
 			continue
 		}
@@ -765,13 +780,22 @@ codeLoop:
 			}
 
 			fmt.Print("Trying '" + form.Service + "' SHIFT code '" + code + DOTDOTDOT)
-			rerr, stop := withBackoff(bulk, func() error { return client.RedeemForm(form) })
+			rerr, stop := withBackoff(ctx, bulk, func() error { return client.RedeemForm(ctx, form) })
 			if stop {
+				if ctx.Err() != nil {
+					fmt.Println("interrupted.")
+					interrupted = true
+					break codeLoop
+				}
 				fmt.Println("rate limited.")
 				rateLimited = true
 				break codeLoop
 			}
 			if rerr != nil {
+				if ctx.Err() != nil {
+					interrupted = true
+					break codeLoop
+				}
 				fmt.Println(rerr)
 				low := strings.ToLower(rerr.Error())
 				switch {
@@ -842,6 +866,7 @@ codeLoop:
 			printError(err)
 		}
 	}
+	return true
 }
 
 // consecutiveBackoff returns the escalating sleep for the Nth consecutive non-200
@@ -859,6 +884,14 @@ func consecutiveBackoff(consecutive int) time.Duration {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+// run implements the CLI entry point and returns the process exit code: 0 on
+// success or a clean interrupt, 1 on a setup/login/code-fetch failure. The
+// mutually-exclusive-flags check exits directly with 2 (before any cleanup is
+// registered).
+func run() int {
 	var (
 		username        string
 		password        string
@@ -932,21 +965,36 @@ func main() {
 	// --migrate is a standalone, login-free maintenance op: just upgrade the cache.
 	if migrate {
 		runMigrate()
-		return
+		return 0
 	}
 
 	if password == "" {
-		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter password        : ")
-		line, _, _ := reader.ReadLine()
-		password = string(line)
+		if term.IsTerminal(int(os.Stdin.Fd())) {
+			pw, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Println()
+			if err != nil {
+				fmt.Printf("error: failed to read password: %v\n", err)
+				os.Exit(1)
+			}
+			password = string(pw)
+		} else {
+			reader := bufio.NewReader(os.Stdin)
+			line, _, _ := reader.ReadLine()
+			password = string(line)
+		}
 	}
 
+	// A Ctrl-C (or SIGTERM) during setup, login, or a long throttled run should
+	// stop cleanly and save progress rather than discard the whole run.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	fmt.Print("Setting up . . . . . ")
-	client, err := bl3.NewBl3Client(configPath)
+	client, err := bl3.NewBl3Client(ctx, configPath)
 	if err != nil {
 		printError(err)
-		return
+		return 1
 	}
 	client.Verbose = verbose
 	client.Config.Shift.AllowInactive = allowInactive
@@ -957,18 +1005,13 @@ func main() {
 	}
 
 	fmt.Print("Logging in as '" + username + DOTDOTDOT)
-	if err = client.Login(username, password); err != nil {
+	if err = client.Login(ctx, username, password); err != nil {
 		printError(err)
-		return
+		return 1
 	}
 	fmt.Println(SUCCESS)
 
-	// A Ctrl-C (or SIGTERM) during a long, throttled run should stop cleanly and
-	// save progress rather than discard the whole run.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	doShift(ctx, client, shiftOptions{
+	ok := doShift(ctx, client, shiftOptions{
 		source:          source,
 		singleShiftCode: singleShiftCode,
 		platformFilter:  platformFilter,
@@ -979,13 +1022,17 @@ func main() {
 		refresh:         refresh,
 		count:           count,
 	})
+	if !ok {
+		return 1
+	}
 
 	// On Ctrl-C/SIGTERM, doShift has already stopped cleanly and saved progress; exit
 	// promptly rather than making the user sit through the countdown.
 	if ctx.Err() != nil {
 		fmt.Println("Interrupted; exiting.")
-		return
+		return 0
 	}
 
 	exit()
+	return 0
 }

@@ -70,7 +70,7 @@ func TestHttpClientGetAndDefaults(t *testing.T) {
 	c.SetDefaultHeader("Referer", "https://default.example/")
 
 	// Plain Get: default headers applied.
-	if _, err := c.Get(srv.URL); err != nil {
+	if _, err := c.Get(t.Context(), srv.URL); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if !strings.Contains(gotUA, "Mozilla/5.0") {
@@ -81,7 +81,7 @@ func TestHttpClientGetAndDefaults(t *testing.T) {
 	}
 
 	// Per-request header must win over the default.
-	if _, err := c.GetWithHeaders(srv.URL, map[string]string{"Referer": "https://override.example/"}); err != nil {
+	if _, err := c.GetWithHeaders(t.Context(), srv.URL, map[string]string{"Referer": "https://override.example/"}); err != nil {
 		t.Fatalf("GetWithHeaders: %v", err)
 	}
 	if gotReferer != "https://override.example/" {
@@ -100,7 +100,7 @@ func TestPostForm(t *testing.T) {
 
 	c, _ := NewHttpClient()
 	form := map[string][]string{"user[email]": {"a@b.com"}, "x": {"y"}}
-	if _, err := c.PostForm(srv.URL, form, map[string]string{"Referer": "r"}); err != nil {
+	if _, err := c.PostForm(t.Context(), srv.URL, form, map[string]string{"Referer": "r"}); err != nil {
 		t.Fatalf("PostForm: %v", err)
 	}
 	if gotCT != "application/x-www-form-urlencoded" {
@@ -121,14 +121,14 @@ func TestFetchBytes(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	b, err := fetchBytes(srv.URL + "/good")
+	b, err := fetchBytes(t.Context(), srv.URL+"/good")
 	if err != nil || string(b) != "payload" {
 		t.Fatalf("fetchBytes good: %q, %v", b, err)
 	}
-	if _, err := fetchBytes(srv.URL + "/bad"); err == nil {
+	if _, err := fetchBytes(t.Context(), srv.URL+"/bad"); err == nil {
 		t.Error("fetchBytes should error on non-200")
 	}
-	if _, err := fetchBytes("http://127.0.0.1:0/nope"); err == nil {
+	if _, err := fetchBytes(t.Context(), "http://127.0.0.1:0/nope"); err == nil {
 		t.Error("fetchBytes should error on bad host")
 	}
 }
@@ -148,7 +148,7 @@ func TestFetchBytesGzip(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	b, err := fetchBytes(srv.URL)
+	b, err := fetchBytes(t.Context(), srv.URL)
 	if err != nil {
 		t.Fatalf("fetchBytes: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestBodyAsHtmlDoc(t *testing.T) {
 	defer srv.Close()
 	c, _ := NewHttpClient()
 
-	res, _ := c.Get(srv.URL + "/html")
+	res, _ := c.Get(t.Context(), srv.URL+"/html")
 	doc, err := res.BodyAsHtmlDoc()
 	if err != nil {
 		t.Fatalf("BodyAsHtmlDoc: %v", err)
@@ -181,7 +181,7 @@ func TestBodyAsHtmlDoc(t *testing.T) {
 		t.Errorf("meta token = %q", tok)
 	}
 
-	res2, _ := c.Get(srv.URL + "/missing")
+	res2, _ := c.Get(t.Context(), srv.URL+"/missing")
 	if _, err := res2.BodyAsHtmlDoc(); err == nil {
 		t.Error("BodyAsHtmlDoc should error on non-200")
 	}
@@ -202,7 +202,7 @@ func TestNewBl3ClientLocalConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, err := NewBl3Client(path)
+	c, err := NewBl3Client(t.Context(), path)
 	if err != nil {
 		t.Fatalf("NewBl3Client: %v", err)
 	}
@@ -215,13 +215,13 @@ func TestNewBl3ClientLocalConfig(t *testing.T) {
 }
 
 func TestNewBl3ClientErrors(t *testing.T) {
-	if _, err := NewBl3Client(filepath.Join(t.TempDir(), "nope.json")); err == nil {
+	if _, err := NewBl3Client(t.Context(), filepath.Join(t.TempDir(), "nope.json")); err == nil {
 		t.Error("expected error for missing config file")
 	}
 
 	bad := filepath.Join(t.TempDir(), "bad.json")
 	_ = os.WriteFile(bad, []byte("not json"), 0o600)
-	if _, err := NewBl3Client(bad); err == nil {
+	if _, err := NewBl3Client(t.Context(), bad); err == nil {
 		t.Error("expected error for invalid json")
 	}
 }
@@ -262,7 +262,7 @@ func TestNewBl3ClientFallsBackToEmbedded(t *testing.T) {
 	remoteConfigUrl = srv.URL
 	defer func() { remoteConfigUrl = orig }()
 
-	c, err := NewBl3Client("")
+	c, err := NewBl3Client(t.Context(), "")
 	if err != nil {
 		t.Fatalf("NewBl3Client: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestNewBl3ClientFallbackWhenRemoteUnreachable(t *testing.T) {
 	remoteConfigUrl = "http://127.0.0.1:0/nope"
 	defer func() { remoteConfigUrl = orig }()
 
-	c, err := NewBl3Client("")
+	c, err := NewBl3Client(t.Context(), "")
 	if err != nil || !configComplete(c.Config) {
 		t.Errorf("unreachable remote should fall back to embedded: err=%v cfg=%+v", err, c.Config)
 	}
@@ -295,7 +295,7 @@ func TestNewBl3ClientUsesValidRemote(t *testing.T) {
 	remoteConfigUrl = srv.URL
 	defer func() { remoteConfigUrl = orig }()
 
-	c, err := NewBl3Client("")
+	c, err := NewBl3Client(t.Context(), "")
 	if err != nil {
 		t.Fatalf("NewBl3Client: %v", err)
 	}
@@ -320,13 +320,13 @@ func TestGetCsrfToken(t *testing.T) {
 	defer srv.Close()
 	c := newTestClient(t, srv.URL)
 
-	if tok, err := c.getCsrfToken(srv.URL + "/meta"); err != nil || tok != "test-token-12345" {
+	if tok, err := c.getCsrfToken(t.Context(), srv.URL+"/meta"); err != nil || tok != "test-token-12345" {
 		t.Errorf("meta token: %q, %v", tok, err)
 	}
-	if tok, err := c.getCsrfToken(srv.URL + "/input"); err != nil || tok != "input-tok" {
+	if tok, err := c.getCsrfToken(t.Context(), srv.URL+"/input"); err != nil || tok != "input-tok" {
 		t.Errorf("input token: %q, %v", tok, err)
 	}
-	if _, err := c.getCsrfToken(srv.URL + "/none"); err == nil {
+	if _, err := c.getCsrfToken(t.Context(), srv.URL+"/none"); err == nil {
 		t.Error("expected error when no token present")
 	}
 }
@@ -367,7 +367,7 @@ func TestLogin(t *testing.T) {
 	for _, tc := range cases {
 		c := newTestClient(t, srv.URL)
 		c.Verbose = true // exercise logf
-		err := c.Login(tc.email, "pw")
+		err := c.Login(t.Context(), tc.email, "pw")
 		if (err != nil) != tc.wantErr {
 			t.Errorf("Login(%s): err=%v, wantErr=%v", tc.email, err, tc.wantErr)
 		}
@@ -375,7 +375,7 @@ func TestLogin(t *testing.T) {
 
 	// After a successful login the session cookie should be sent on later requests.
 	c := newTestClient(t, srv.URL)
-	if err := c.Login("good@x.com", "pw"); err != nil {
+	if err := c.Login(t.Context(), "good@x.com", "pw"); err != nil {
 		t.Fatalf("login: %v", err)
 	}
 	var sawCookie string
@@ -417,7 +417,7 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 	defer srv.Close()
 	c := newTestClient(t, srv.URL)
 
-	forms, reason, err := c.GetCodeRedemptionForms("GOODCODE")
+	forms, reason, err := c.GetCodeRedemptionForms(t.Context(), "GOODCODE")
 	if err != nil || reason != "" {
 		t.Fatalf("good code: reason=%q err=%v", reason, err)
 	}
@@ -428,7 +428,7 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 		t.Errorf("form fields not parsed: %+v", forms[0].Fields)
 	}
 
-	forms, reason, err = c.GetCodeRedemptionForms("USEDCODE")
+	forms, reason, err = c.GetCodeRedemptionForms(t.Context(), "USEDCODE")
 	if err != nil || len(forms) != 0 || !strings.Contains(reason, "already been redeemed") {
 		t.Fatalf("used code: forms=%d reason=%q err=%v", len(forms), reason, err)
 	}
@@ -436,11 +436,11 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 	// A non-200, non-rate-limit status surfaces as a typed CodeQueryStatusError
 	// carrying the status, so the caller can count consecutive failures (--rampup).
 	var statusErr *CodeQueryStatusError
-	if _, _, err := c.GetCodeRedemptionForms("INVALID"); !errors.As(err, &statusErr) || statusErr.Status != 500 {
+	if _, _, err := c.GetCodeRedemptionForms(t.Context(), "INVALID"); !errors.As(err, &statusErr) || statusErr.Status != 500 {
 		t.Errorf("expected CodeQueryStatusError{500}, got %v", err)
 	}
 	statusErr = nil
-	if _, _, err := c.GetCodeRedemptionForms("RL302"); !errors.As(err, &statusErr) || statusErr.Status != http.StatusFound {
+	if _, _, err := c.GetCodeRedemptionForms(t.Context(), "RL302"); !errors.As(err, &statusErr) || statusErr.Status != http.StatusFound {
 		t.Errorf("expected CodeQueryStatusError{302} on redirect, got %v", err)
 	}
 	if statusErr != nil {
@@ -513,7 +513,7 @@ func TestRedeemFormSuccessViaPoll(t *testing.T) {
 	form := RedemptionForm{Service: "steam", Fields: map[string]string{
 		"authenticity_token": "x", "archway_code_redemption[code]": "C",
 	}}
-	if err := c.RedeemForm(form); err != nil {
+	if err := c.RedeemForm(t.Context(), form); err != nil {
 		t.Fatalf("RedeemForm should succeed, got %v", err)
 	}
 }
@@ -529,7 +529,7 @@ func TestRedeemFormAlreadyRedeemedAlert(t *testing.T) {
 	defer srv.Close()
 	c := newTestClient(t, srv.URL)
 
-	err := c.RedeemForm(RedemptionForm{Service: "steam", Fields: map[string]string{"a": "b"}})
+	err := c.RedeemForm(t.Context(), RedemptionForm{Service: "steam", Fields: map[string]string{"a": "b"}})
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "already") {
 		t.Fatalf("expected already-redeemed error, got %v", err)
 	}
@@ -551,23 +551,23 @@ func TestGetShiftCodesAndFailover(t *testing.T) {
 	defer srv.Close()
 	c := newTestClient(t, srv.URL)
 
-	if v2, err := c.GetShiftCodesV2(); err != nil || len(v2) != 2 {
+	if v2, err := c.GetShiftCodesV2(t.Context()); err != nil || len(v2) != 2 {
 		t.Errorf("v2: %d codes, err=%v", len(v2), err)
 	}
-	if v1, err := c.GetShiftCodesV1(); err != nil || len(v1) != 2 {
+	if v1, err := c.GetShiftCodesV1(t.Context()); err != nil || len(v1) != 2 {
 		t.Errorf("v1: %d codes, err=%v", len(v1), err)
 	}
-	if def, err := c.GetShiftCodes(""); err != nil || len(def) != 2 {
+	if def, err := c.GetShiftCodes(t.Context(), ""); err != nil || len(def) != 2 {
 		t.Errorf("default: %d codes, err=%v", len(def), err)
 	}
-	if forced, err := c.GetShiftCodes("v1"); err != nil || len(forced) != 2 {
+	if forced, err := c.GetShiftCodes(t.Context(), "v1"); err != nil || len(forced) != 2 {
 		t.Errorf("forced v1: %d codes, err=%v", len(forced), err)
 	}
 
 	// Failover: break v2, expect v1 results.
 	c.Config.Shift.CodeListUrlV2 = srv.URL + "/missing.json"
 	c.Verbose = true
-	fb, err := c.GetShiftCodes("")
+	fb, err := c.GetShiftCodes(t.Context(), "")
 	if err != nil || len(fb) != 2 {
 		t.Errorf("failover: %d codes, err=%v", len(fb), err)
 	}
@@ -582,13 +582,13 @@ func TestGetShiftCodesV2AllowInactive(t *testing.T) {
 	c.Config.Shift.CodeListUrlV2 = srv.URL + "/v2.json"
 
 	// Default: expired codes are dropped.
-	if codes, err := c.GetShiftCodesV2(); err != nil || len(codes) != 2 {
+	if codes, err := c.GetShiftCodesV2(t.Context()); err != nil || len(codes) != 2 {
 		t.Errorf("default: expected 2 non-expired codes, got %d (err=%v)", len(codes), err)
 	}
 
 	// AllowInactive: expired codes are included.
 	c.Config.Shift.AllowInactive = true
-	if codes, err := c.GetShiftCodesV2(); err != nil || len(codes) != 3 {
+	if codes, err := c.GetShiftCodesV2(t.Context()); err != nil || len(codes) != 3 {
 		t.Errorf("allow-inactive: expected 3 codes incl. expired, got %d (err=%v)", len(codes), err)
 	}
 }
@@ -610,7 +610,7 @@ func TestRedemptionTokenCaching(t *testing.T) {
 	c := newTestClient(t, srv.URL)
 
 	for _, code := range []string{"CODE1", "CODE2", "CODE3"} {
-		if _, _, err := c.GetCodeRedemptionForms(code); err != nil {
+		if _, _, err := c.GetCodeRedemptionForms(t.Context(), code); err != nil {
 			t.Fatalf("GetCodeRedemptionForms(%s): %v", code, err)
 		}
 	}
@@ -685,7 +685,7 @@ func TestThrottlePacing(t *testing.T) {
 
 	start := time.Now()
 	for range 3 {
-		if _, err := c.Get(srv.URL); err != nil {
+		if _, err := c.Get(t.Context(), srv.URL); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -745,10 +745,10 @@ func TestRateLimitedDetection(t *testing.T) {
 	defer srv.Close()
 	c := newTestClient(t, srv.URL)
 
-	if _, _, err := c.GetCodeRedemptionForms("X"); !errors.Is(err, ErrRateLimited) {
+	if _, _, err := c.GetCodeRedemptionForms(t.Context(), "X"); !errors.Is(err, ErrRateLimited) {
 		t.Errorf("entitlement 429 should report ErrRateLimited, got %v", err)
 	}
-	if err := c.RedeemForm(RedemptionForm{Service: "steam", Fields: map[string]string{"a": "b"}}); !errors.Is(err, ErrRateLimited) {
+	if err := c.RedeemForm(t.Context(), RedemptionForm{Service: "steam", Fields: map[string]string{"a": "b"}}); !errors.Is(err, ErrRateLimited) {
 		t.Errorf("redemption 503 should report ErrRateLimited, got %v", err)
 	}
 }
