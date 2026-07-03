@@ -15,7 +15,6 @@ import (
 	"time"
 
 	bl3 "github.com/jauderho/bl3auto"
-	"github.com/shibukawa/configdir"
 )
 
 // shrinkBackoff sets tiny rate-limit timings and disables all request pacing/backoff
@@ -54,8 +53,8 @@ func useTempCache(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	orig := resolveCacheFolder
-	resolveCacheFolder = func() *configdir.Config {
-		return &configdir.Config{Path: dir, Type: configdir.Global}
+	resolveCacheFolder = func() *cacheFolder {
+		return &cacheFolder{path: dir}
 	}
 	t.Cleanup(func() { resolveCacheFolder = orig })
 	return dir
@@ -116,7 +115,7 @@ func TestDoShiftCachesAcrossRuns(t *testing.T) {
 	}
 
 	// The cache must now hold all n codes (each on steam+epic).
-	folder := &configdir.Config{Path: cacheDir, Type: configdir.Global}
+	folder := &cacheFolder{path: cacheDir}
 	cached, _, _ := readRedeemedCache(folder, "cache-test-shift-codes.json")
 	if len(cached) != n {
 		t.Fatalf("expected %d codes cached, got %d", n, len(cached))
@@ -223,7 +222,7 @@ func TestDoShiftInterruptSavesProgress(t *testing.T) {
 // (kill -9, full disk, power loss) can never truncate or corrupt the cache.
 func TestAtomicWriteCacheReplacesCleanly(t *testing.T) {
 	dir := t.TempDir()
-	folder := &configdir.Config{Path: dir, Type: configdir.Global}
+	folder := &cacheFolder{path: dir}
 	const fn = "atomic-shift-codes.json"
 
 	// Seed an existing cache, then overwrite it with different contents.
@@ -255,7 +254,7 @@ func TestAtomicWriteCacheReplacesCleanly(t *testing.T) {
 }
 
 func TestRedeemedCodesRoundTrip(t *testing.T) {
-	folder := &configdir.Config{Path: t.TempDir(), Type: configdir.Global}
+	folder := &cacheFolder{path: t.TempDir()}
 	const fn = "test-shift-codes.json"
 
 	// No codes/ dir at all (nil folder) → empty map, no file.
@@ -273,8 +272,8 @@ func TestRedeemedCodesRoundTrip(t *testing.T) {
 	if err := writeRedeemedCache(folder, fn, want, stamp); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if !folder.Exists(fn) {
-		t.Fatalf("expected %s to exist in the codes folder after write", fn)
+	if _, err := os.Stat(filepath.Join(folder.path, fn)); err != nil {
+		t.Fatalf("expected %s to exist in the codes folder after write: %v", fn, err)
 	}
 	got, lastRun, existed := readRedeemedCache(folder, fn)
 	if !existed {
@@ -291,9 +290,9 @@ func TestRedeemedCodesRoundTrip(t *testing.T) {
 // TestReadRedeemedCacheBackCompat: an old bare-map file (no wrapper) still reads,
 // with zero lastRun and existed=true.
 func TestReadRedeemedCacheBackCompat(t *testing.T) {
-	folder := &configdir.Config{Path: t.TempDir(), Type: configdir.Global}
+	folder := &cacheFolder{path: t.TempDir()}
 	const fn = "legacy-shift-codes.json"
-	if err := folder.WriteFile(fn, []byte(`{"OLD11-OLD22":["steam","epic"]}`)); err != nil {
+	if err := os.WriteFile(filepath.Join(folder.path, fn), []byte(`{"OLD11-OLD22":["steam","epic"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, lastRun, existed := readRedeemedCache(folder, fn)
@@ -547,7 +546,7 @@ func TestDoShiftRetriesThrottledCodesAtEndOfRun(t *testing.T) {
 	if strings.Contains(out, "Stopped after") {
 		t.Errorf("run should not hit the shadowban stop, got:\n%s", out)
 	}
-	folder := &configdir.Config{Path: cacheDir, Type: configdir.Global}
+	folder := &cacheFolder{path: cacheDir}
 	cached, _, _ := readRedeemedCache(folder, "unittest-retry-shift-codes.json")
 	for i := 1; i <= n; i++ {
 		code := fmt.Sprintf("CODE%02d", i)
@@ -607,8 +606,8 @@ func TestDoShiftBumpsLastRunAndUpgrades(t *testing.T) {
 	fn := usernameHash + "-shift-codes.json"
 
 	// Seed an old-format (bare map) cache file.
-	folder := &configdir.Config{Path: cacheDir, Type: configdir.Global}
-	if err := folder.WriteFile(fn, []byte(`{"OLDCODE-XYZ":["steam","epic"]}`)); err != nil {
+	folder := &cacheFolder{path: cacheDir}
+	if err := os.WriteFile(filepath.Join(folder.path, fn), []byte(`{"OLDCODE-XYZ":["steam","epic"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -639,9 +638,9 @@ func TestMigrateInPlace(t *testing.T) {
 	cacheDir := useTempCache(t)
 	usernameHash = "unittest-migrate"
 	fn := usernameHash + "-shift-codes.json"
-	folder := &configdir.Config{Path: cacheDir, Type: configdir.Global}
+	folder := &cacheFolder{path: cacheDir}
 
-	if err := folder.WriteFile(fn, []byte(`{"OLD11-OLD22":["steam","epic"],"OLD33-OLD44":["steam"]}`)); err != nil {
+	if err := os.WriteFile(filepath.Join(folder.path, fn), []byte(`{"OLD11-OLD22":["steam","epic"],"OLD33-OLD44":["steam"]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -764,7 +763,7 @@ func TestResolveCacheFolderPrefersLocal(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 
 	// No codes/ dir → config-dir fallback (not the local path).
-	if f := resolveCacheFolder(); f.Type == configdir.Local && f.Path == "codes" {
+	if f := resolveCacheFolder(); f != nil && f.path == "codes" {
 		t.Errorf("without a codes/ dir, should not use the local path; got %+v", f)
 	}
 
@@ -772,7 +771,7 @@ func TestResolveCacheFolderPrefersLocal(t *testing.T) {
 	if err := os.Mkdir("codes", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if f := resolveCacheFolder(); f.Path != "codes" || f.Type != configdir.Local {
+	if f := resolveCacheFolder(); f == nil || f.path != "codes" {
 		t.Errorf("with a codes/ dir, expected local codes path, got %+v", f)
 	}
 }

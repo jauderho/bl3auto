@@ -52,7 +52,6 @@ import (
 	"time"
 
 	bl3 "github.com/jauderho/bl3auto"
-	"github.com/shibukawa/configdir"
 	"golang.org/x/term"
 )
 
@@ -130,17 +129,42 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
+// cacheFolder is a directory that stores the redeemed-codes cache, replacing the
+// vendored configdir.Config with just what readRedeemedCache/writeRedeemedCache
+// need: reading a file inside it and ensuring it exists on write.
+type cacheFolder struct {
+	path string
+}
+
+// ReadFile reads fileName from inside the folder.
+func (f *cacheFolder) ReadFile(fileName string) ([]byte, error) {
+	return os.ReadFile(filepath.Join(f.path, fileName))
+}
+
+// CreateParentDir ensures the folder exists (fileName has no path separators here,
+// so its parent is always the folder itself). configdir.CreateParentDir created it
+// with 0755; preserved here.
+func (f *cacheFolder) CreateParentDir(string) error {
+	return os.MkdirAll(f.path, 0o755)
+}
+
 // resolveCacheFolder returns the folder that stores the redeemed-codes cache.
 // It prefers a local `codes/` directory in the working directory when one exists —
 // the same path the Docker image mounts its volume onto — so a native run from the
 // project directory shares the cache instead of writing to the OS config dir. When
-// no local `codes/` exists it falls back to the per-user config dir. Overridable in
-// tests.
-var resolveCacheFolder = func() *configdir.Config {
+// no local `codes/` exists it falls back to the per-user config dir
+// (os.UserConfigDir()/bl3auto/bl3auto — the same path configdir.New("bl3auto",
+// "bl3auto") resolved to on Linux, macOS, and Windows, so existing caches are found
+// without migration). Overridable in tests.
+var resolveCacheFolder = func() *cacheFolder {
 	if fi, err := os.Stat("codes"); err == nil && fi.IsDir() {
-		return &configdir.Config{Path: "codes", Type: configdir.Local}
+		return &cacheFolder{path: "codes"}
 	}
-	return configdir.New("bl3auto", "bl3auto").QueryFolders(configdir.Global)[0]
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return nil
+	}
+	return &cacheFolder{path: filepath.Join(configDir, "bl3auto", "bl3auto")}
 }
 
 // withBackoff runs op. When retry is true and op reports ErrRateLimited, it
@@ -406,7 +430,7 @@ func summarize(s string) string {
 // versioned format ({version, lastRun, codes}) and the older bare-map format,
 // returning the codes, the last-run time (zero if unknown), and whether a cache file
 // existed at all. A nil folder or unreadable/empty file yields (empty, zero, false).
-func readRedeemedCache(folder *configdir.Config, configFilename string) (bl3.ShiftCodeMap, time.Time, bool) {
+func readRedeemedCache(folder *cacheFolder, configFilename string) (bl3.ShiftCodeMap, time.Time, bool) {
 	if folder == nil {
 		return bl3.ShiftCodeMap{}, time.Time{}, false
 	}
@@ -431,7 +455,7 @@ func readRedeemedCache(folder *configdir.Config, configFilename string) (bl3.Shi
 
 // writeRedeemedCache persists the redeemed-codes cache in the current versioned
 // format, stamping it with the given last-run time.
-func writeRedeemedCache(folder *configdir.Config, configFilename string, codes bl3.ShiftCodeMap, lastRun time.Time) error {
+func writeRedeemedCache(folder *cacheFolder, configFilename string, codes bl3.ShiftCodeMap, lastRun time.Time) error {
 	if folder == nil {
 		return nil
 	}
@@ -449,11 +473,11 @@ func writeRedeemedCache(folder *configdir.Config, configFilename string, codes b
 // never truncate or corrupt the existing cache — a reader always sees either the old
 // complete file or the new one. A normal Ctrl-C is caught and the run finishes this
 // write before exiting, so it is unaffected.
-func atomicWriteCache(folder *configdir.Config, fileName string, data []byte) (err error) {
+func atomicWriteCache(folder *cacheFolder, fileName string, data []byte) (err error) {
 	if err = folder.CreateParentDir(fileName); err != nil {
 		return err
 	}
-	dir := folder.Path
+	dir := folder.path
 	dest := filepath.Join(dir, fileName)
 
 	tmp, err := os.CreateTemp(dir, fileName+".tmp-*")
@@ -486,7 +510,7 @@ func atomicWriteCache(folder *configdir.Config, fileName string, data []byte) (e
 	return os.Rename(tmpName, dest)
 }
 
-func loadRedeemedCodes(folder *configdir.Config, configFilename string) (bl3.ShiftCodeMap, time.Time, bool) {
+func loadRedeemedCodes(folder *cacheFolder, configFilename string) (bl3.ShiftCodeMap, time.Time, bool) {
 	fmt.Print("Getting previously redeemed SHIFT codes . . . . . ")
 	codes, lastRun, existed := readRedeemedCache(folder, configFilename)
 	if len(codes) == 0 {
