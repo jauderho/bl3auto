@@ -181,7 +181,7 @@ func withBackoff(ctx context.Context, retry bool, op func() error) (err error, s
 }
 
 // gross but effective for now
-const version = "2.3.3"
+const version = "2.3.4"
 
 const SUCCESS = "success!"
 const NOTFOUND = "not found."
