@@ -181,7 +181,7 @@ func (client *Bl3Client) GetCodeRedemptionForms(ctx context.Context, code string
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to query code: %w", err)
 	}
-	bodyBytes, _ := io.ReadAll(res.Body)
+	bodyBytes, readErr := io.ReadAll(res.Body)
 	_ = res.Body.Close()
 	client.logf("GET %s?code=%s -> %d", client.Config.Shift.RedemptionInfoUrl, code, res.StatusCode)
 
@@ -198,6 +198,12 @@ func (client *Bl3Client) GetCodeRedemptionForms(ctx context.Context, code string
 			Location:   res.Header.Get("Location"),
 			RetryAfter: parseRetryAfter(res.Header),
 		}
+	}
+	// Only the 200 path consumes the body. A truncated read here would otherwise
+	// parse partial HTML, find no forms, and misreport the code as not redeemable;
+	// for non-200 responses the status/headers above already classify the outcome.
+	if readErr != nil {
+		return nil, "", &BodyReadError{Err: readErr}
 	}
 
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(bodyBytes))
@@ -276,8 +282,11 @@ func (client *Bl3Client) resolveRedemption(ctx context.Context, res *HttpRespons
 			res = next
 			continue
 		default:
-			bodyBytes, _ := io.ReadAll(res.Body)
+			bodyBytes, readErr := io.ReadAll(res.Body)
 			_ = res.Body.Close()
+			if readErr != nil {
+				return &BodyReadError{Err: readErr}
+			}
 			doc, err := goquery.NewDocumentFromReader(bytes.NewReader(bodyBytes))
 			if err != nil {
 				return errors.New("failed to parse redemption response")
@@ -290,6 +299,9 @@ func (client *Bl3Client) resolveRedemption(ctx context.Context, res *HttpRespons
 			return statusFromText(doc.Find(".alert").Text(), visitedRedemption)
 		}
 	}
+	// All 10 iterations were redirects: the loop's last action fetched an 11th
+	// response into res without processing it, so its body was never closed.
+	_ = res.Body.Close()
 	return errors.New("too many redemption redirects")
 }
 
@@ -308,8 +320,11 @@ func (client *Bl3Client) pollRedemptionStatus(ctx context.Context, dataUrl strin
 		if err != nil {
 			return fmt.Errorf("failed to check redemption status: %w", err)
 		}
-		body, _ := io.ReadAll(res.Body)
+		body, readErr := io.ReadAll(res.Body)
 		_ = res.Body.Close()
+		if readErr != nil {
+			return &BodyReadError{Err: readErr}
+		}
 
 		var payload struct {
 			Text string `json:"text"`

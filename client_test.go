@@ -458,6 +458,44 @@ func TestGetCodeRedemptionForms(t *testing.T) {
 	}
 }
 
+// TestGetCodeRedemptionFormsBodyReadError proves a truncated 200 response (the
+// server promises more bytes via Content-Length than it actually sends before
+// dropping the connection) surfaces as a typed *BodyReadError rather than being
+// silently parsed as an empty, form-less page.
+func TestGetCodeRedemptionFormsBodyReadError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, metaTokenPage)
+		case "/entitlement_offer_codes":
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("test server does not support hijacking")
+				return
+			}
+			conn, buf, err := hj.Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			defer func() { _ = conn.Close() }()
+			_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n")
+			_, _ = buf.WriteString("short")
+			_ = buf.Flush()
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+
+	_, _, err := c.GetCodeRedemptionForms(t.Context(), "TRUNCATED")
+	var bodyErr *BodyReadError
+	if !errors.As(err, &bodyErr) {
+		t.Fatalf("expected *BodyReadError, got %v (%T)", err, err)
+	}
+}
+
 func TestParseRetryAfter(t *testing.T) {
 	mk := func(v string) http.Header {
 		h := http.Header{}
@@ -488,6 +526,37 @@ func TestParseRetryAfter(t *testing.T) {
 	past := time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat)
 	if d := parseRetryAfter(mk(past)); d != 0 {
 		t.Errorf("past HTTP-date should be 0, got %s", d)
+	}
+}
+
+// TestParseRetryAfterOverflow proves that Retry-After values large enough to
+// overflow a time.Duration (int64 nanoseconds) are rejected as malformed (0)
+// rather than wrapping into a negative duration.
+func TestParseRetryAfterOverflow(t *testing.T) {
+	mk := func(v string) http.Header {
+		h := http.Header{}
+		h.Set("Retry-After", v)
+		return h
+	}
+	cases := []struct {
+		name string
+		v    string
+		want time.Duration
+	}{
+		{"largest representable seconds", "9223372036", 9223372036 * time.Second},
+		{"one second past the representable max", "9223372037", 0},
+		{"far beyond int64 range", "99999999999999999999", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseRetryAfter(mk(tc.v))
+			if got < 0 {
+				t.Fatalf("parseRetryAfter(%q) returned a negative duration: %s", tc.v, got)
+			}
+			if got != tc.want {
+				t.Errorf("parseRetryAfter(%q) = %s, want %s", tc.v, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -1227,3 +1227,146 @@ func TestDoShiftAlreadyRedeemedReason(t *testing.T) {
 		t.Errorf("expected already-redeemed reason, got:\n%s", out)
 	}
 }
+
+// TestDoShiftWarnsWhenRefreshDropsGameFilter: --refresh intentionally skips the
+// --game/--skip-game filter (to force a full re-scan), but must warn about it
+// rather than silently ignoring the flags the user passed.
+func TestDoShiftWarnsWhenRefreshDropsGameFilter(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-refresh-warn"
+	useTempCache(t)
+	srv := cachingTestServer(t, 1)
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() {
+		doShift(context.Background(), c, shiftOptions{refresh: true, gameInclude: []string{"borderlands 3"}})
+	})
+	if !strings.Contains(out, "WARNING") || !strings.Contains(out, "--refresh") {
+		t.Errorf("expected a WARNING about --refresh dropping the game filter, got:\n%s", out)
+	}
+
+	// No warning when --refresh is set but no game filter was requested.
+	out2 := captureStdout(t, func() {
+		doShift(context.Background(), c, shiftOptions{refresh: true})
+	})
+	if strings.Contains(out2, "WARNING") && strings.Contains(out2, "--refresh") {
+		t.Errorf("should not warn about --refresh when no game filter is set, got:\n%s", out2)
+	}
+}
+
+// TestDoShiftRequeuesOnBodyReadError: a code-query response that is truncated
+// mid-transfer (a dropped connection, not a SHiFT status signal) must be re-queued
+// and retried like a throttled code, but must NOT be treated as a throttle signal:
+// the adaptive throttle must not widen and the run must not approach the
+// shadowban stop threshold.
+func TestDoShiftRequeuesOnBodyReadError(t *testing.T) {
+	shrinkBackoff(t, 1)
+	maxRetryAttempts = 2
+	backoffAfter, stopAfter = 100, 100 // must never fire: a body-read error isn't a throttle
+	throttleBase, throttleJitter = 2*time.Millisecond, 0
+	throttleSpeedupAfter = 1000 // keep the throttle pinned at the floor for this test
+
+	const n = 6 // >= bulkThreshold, so this exercises the throttle/backoff machinery
+	listJSON := rampupListJSON(n)
+	seen := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			code := r.URL.Query().Get("code")
+			seen[code]++
+			if code == "CODE01" && seen[code] == 1 {
+				// Truncate the response mid-transfer: promise more bytes than are
+				// actually sent, then drop the connection.
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					t.Error("test server does not support hijacking")
+					return
+				}
+				conn, buf, err := hj.Hijack()
+				if err != nil {
+					t.Errorf("hijack: %v", err)
+					return
+				}
+				_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n")
+				_, _ = buf.WriteString("short")
+				_ = buf.Flush()
+				_ = conn.Close()
+				return
+			}
+			_, _ = io.WriteString(w, `<form class="new_archway_code_redemption" id="new_archway_code_redemption">`+
+				`<input id="archway_code_redemption_service" name="archway_code_redemption[service]" value="steam">`+
+				`<input name="archway_code_redemption[code]" value="`+code+`"></form>`)
+		case "/code_redemptions":
+			_, _ = io.WriteString(w, `<div class="alert">Your code was successfully redeemed</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	usernameHash = "unittest-bodyreaderror"
+	cacheDir := useTempCache(t)
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+
+	if !strings.Contains(out, "will retry") {
+		t.Errorf("expected a retry notice for the truncated code, got:\n%s", out)
+	}
+	if strings.Contains(out, "Stopped after") || strings.Contains(out, "backing off") {
+		t.Errorf("a body-read error must not be treated as a throttle (no backoff/shadowban), got:\n%s", out)
+	}
+	if got := c.CurrentInterval(); got != throttleBase {
+		t.Errorf("a body-read error must not widen the adaptive throttle; expected %s, got %s", throttleBase, got)
+	}
+
+	folder := &cacheFolder{path: cacheDir}
+	cached, _, _ := readRedeemedCache(folder, "unittest-bodyreaderror-shift-codes.json")
+	if !cached.Contains("CODE01", "steam") {
+		t.Errorf("expected CODE01 to be redeemed after the retry; cache=%v", cached)
+	}
+	if seen["CODE01"] != 2 {
+		t.Errorf("expected CODE01 queried twice (truncated then good), got %d", seen["CODE01"])
+	}
+}
+
+// TestDoShiftAlreadyRedeemedAtSubmission: the SHiFT site offers a real redemption
+// form for a code, but the actual submission resolves to "already redeemed" (e.g.
+// a stale cache didn't know about a platform that was in fact already redeemed on).
+// doShift must self-heal by recording the service in the cache anyway.
+func TestDoShiftAlreadyRedeemedAtSubmission(t *testing.T) {
+	usernameHash = "unittest-already-submit"
+	useTempCache(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			_, _ = io.WriteString(w, `<form class="new_archway_code_redemption" id="new_archway_code_redemption">`+
+				`<input id="archway_code_redemption_service" name="archway_code_redemption[service]" value="steam">`+
+				`<input name="archway_code_redemption[code]" value="REALCODE"></form>`)
+		case "/code_redemptions":
+			_, _ = io.WriteString(w, `<div class="alert">This SHiFT code has already been redeemed</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() {
+		doShift(context.Background(), c, shiftOptions{singleShiftCode: "REALCODE"})
+	})
+	if !strings.Contains(strings.ToLower(out), "already been redeemed") {
+		t.Errorf("expected the already-redeemed submission message, got:\n%s", out)
+	}
+
+	cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
+	if !cached.Contains("REALCODE", "steam") {
+		t.Errorf("expected the service to be recorded in the redeemed-codes cache (self-healing), got %v", cached)
+	}
+}

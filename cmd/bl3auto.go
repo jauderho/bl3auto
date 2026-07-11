@@ -608,6 +608,9 @@ func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) bool
 		// Filter the candidate list by game before querying anything — this is the
 		// one filter that cuts code-query volume (codes for unwanted games are never
 		// queried). --refresh ignores the filters for a full re-scan.
+		if opts.refresh && (len(opts.gameInclude) > 0 || len(opts.gameSkip) > 0) {
+			fmt.Println("WARNING: --refresh re-queries every code regardless of --game/--skip-game.")
+		}
 		if !opts.refresh && (len(opts.gameInclude) > 0 || len(opts.gameSkip) > 0) {
 			kept := make([]bl3.ShiftCode, 0, len(list))
 			for _, sc := range list {
@@ -749,6 +752,25 @@ codeLoop:
 					interrupted = true
 					break codeLoop
 				}
+			}
+			continue
+		}
+		var bodyErr *bl3.BodyReadError
+		if errors.As(err, &bodyErr) {
+			// A read failure is a transient network blip (a dropped/truncated
+			// connection), not a SHiFT throttle or shadowban signal: it must not
+			// affect the consecutive-non-200 counter, the adaptive throttle, or
+			// the stop-after brake — just retry the code like a throttled one.
+			if bulk && item.attempts < maxRetryAttempts {
+				item.attempts++
+				queue = append(queue, item)
+				fmt.Printf("Skipping '%s' for now (%s); will retry (attempt %d/%d).\n",
+					code, err.Error(), item.attempts, maxRetryAttempts)
+			} else {
+				if bulk {
+					gaveUp++
+				}
+				fmt.Println("Skipping '" + code + "': " + err.Error())
 			}
 			continue
 		}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/http/cookiejar"
@@ -55,15 +56,35 @@ func (e *CodeQueryStatusError) Error() string {
 	return fmt.Sprintf("code query returned status %d", e.Status)
 }
 
+// BodyReadError indicates a response body could not be fully read (e.g. a
+// connection dropped or truncated mid-transfer). It is a transient network
+// failure, not a SHiFT-side status signal, so callers must not treat it as a
+// throttle or shadowban indicator — just retry.
+type BodyReadError struct {
+	Err error
+}
+
+func (e *BodyReadError) Error() string {
+	return fmt.Sprintf("failed to read response body: %v", e.Err)
+}
+
+func (e *BodyReadError) Unwrap() error { return e.Err }
+
+// maxRetryAfterSecs is the largest whole-second count that fits in a
+// time.Duration (int64 nanoseconds) without overflowing; larger values are
+// treated as malformed rather than silently wrapping to a negative duration.
+const maxRetryAfterSecs = int64(math.MaxInt64) / int64(time.Second)
+
 // parseRetryAfter reads a Retry-After header (delta-seconds or HTTP-date) into a
-// duration. It returns 0 when the header is absent, malformed, or already in the past.
+// duration. It returns 0 when the header is absent, malformed, too large to
+// represent as a duration, or already in the past.
 func parseRetryAfter(h http.Header) time.Duration {
 	v := strings.TrimSpace(h.Get("Retry-After"))
 	if v == "" {
 		return 0
 	}
-	if secs, err := strconv.Atoi(v); err == nil {
-		if secs <= 0 {
+	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+		if secs <= 0 || secs > maxRetryAfterSecs {
 			return 0
 		}
 		return time.Duration(secs) * time.Second
