@@ -5,6 +5,14 @@ release:
   github:
     owner: jauderho
     name: bl3auto
+  # This repo's releases are immutable: once published, assets can never be
+  # added (v2.3.3/v2.3.4 died with "422 Cannot upload assets to an immutable
+  # release" because the release was published from the web UI before the
+  # tag-push workflow ran). Never publish a release from the UI. To hand-write
+  # release notes, save them as a DRAFT titled with the tag (a draft creates
+  # no tag), then `git push origin <tag>`; goreleaser reuses the draft,
+  # uploads assets to it, and publishes it.
+  use_existing_draft: true
 
 snapshot:
   version_template: SNAPSHOT-{{ .Commit }}
