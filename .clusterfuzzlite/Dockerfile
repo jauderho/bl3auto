@@ -1,7 +1,7 @@
 # ClusterFuzzLite builder image.
 # Copies the checked-out source (the code under test, including PRs) into the
 # container rather than git-cloning main, then runs build.sh to compile fuzzers.
-FROM gcr.io/oss-fuzz-base/base-builder-go@sha256:905d3d3cafad7c7823f2e517d186cdba1d758df602fba5939730a68c5ef22238
+FROM gcr.io/oss-fuzz-base/base-builder-go@sha256:0d53f59908d49f9038f5256b12b831a6ce68efb109775cfe87d1ef0a118ff4d8
 
 COPY . $SRC/bl3auto
 WORKDIR $SRC/bl3auto
