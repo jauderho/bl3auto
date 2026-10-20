@@ -1,6 +1,6 @@
 module github.com/jauderho/bl3auto
 
-go 1.27.0
+go 1.27.3
 
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
