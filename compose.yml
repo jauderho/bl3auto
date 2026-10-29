@@ -4,10 +4,9 @@ services:
     #build: .
     container_name: bl3auto
     image: jauderho/bl3auto:latest
-    # Arguments only: the image's ENTRYPOINT is already the bl3auto binary.
-    command: ["-e", "${BL3_EMAIL}"]
-    # Passed via the environment rather than -p, which shows up in `ps` on the host.
+    # Credentials via the environment rather than -e/-p, which show up in `ps`.
     environment:
+      BL3_EMAIL: ${BL3_EMAIL}
       BL3_PASSWORD: ${BL3_PASSWORD}
     volumes:
       - './codes:/root/.config/bl3auto/bl3auto'

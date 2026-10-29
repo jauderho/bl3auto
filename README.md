@@ -30,7 +30,7 @@ Run it with `--help` to view command line args that are supported.
 
 | Flag | Description |
 |---|---|
-| `-e`, `--email` | SHiFT account email (prompted if omitted) |
+| `-e`, `--email` | SHiFT account email (default: the `BL3_EMAIL` environment variable, else prompted) |
 | `-p`, `--password` | SHiFT account password (default: the `BL3_PASSWORD` environment variable, else prompted). Prefer the variable: `-p` is visible to other users in the process list |
 | `--shift-code <code>` | Redeem a single SHiFT code instead of the full list |
 | `--allow-inactive` | Attempt to redeem inactive SHiFT codes too |
@@ -129,8 +129,8 @@ services:
   bl3auto:
     container_name: bl3auto
     image: jauderho/bl3auto:latest
-    command: ["-e", "${BL3_EMAIL}"]
     environment:
+      BL3_EMAIL: ${BL3_EMAIL}
       BL3_PASSWORD: ${BL3_PASSWORD}
     volumes:
       - './codes:/root/.config/bl3auto/bl3auto'

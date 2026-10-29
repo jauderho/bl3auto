@@ -7,7 +7,7 @@
 //
 // Flags:
 //
-//	-e, --email <email>     SHiFT account email (prompted if omitted)
+//	-e, --email <email>     SHiFT account email (default: $BL3_EMAIL, else prompted)
 //	-p, --password <pw>     SHiFT account password (default: $BL3_PASSWORD, else prompted)
 //	    --shift-code <code> Redeem a single SHiFT code instead of the full list
 //	    --allow-inactive    Attempt to redeem inactive SHiFT codes too
@@ -383,7 +383,7 @@ Usage:
   bl3auto [flags]
 
 Flags:
-  -e, --email <email>     SHiFT account email (prompted if omitted)
+  -e, --email <email>     SHiFT account email (default: $BL3_EMAIL, else prompted)
   -p, --password <pw>     SHiFT account password (default: $BL3_PASSWORD, else prompted;
                           prefer the variable: -p is visible in the process list)
       --shift-code <code> Redeem a single SHiFT code instead of the full list
@@ -1045,6 +1045,9 @@ func run() int {
 	// One reader for every prompt: a second bufio.Reader would find the input the
 	// first one already buffered gone (e.g. piped "email\npassword\n").
 	stdin := bufio.NewReader(os.Stdin)
+	if username == "" {
+		username = os.Getenv("BL3_EMAIL")
+	}
 	if username == "" {
 		fmt.Print("Enter username (email): ")
 		line, _, _ := stdin.ReadLine()

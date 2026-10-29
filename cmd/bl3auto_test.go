@@ -1670,3 +1670,27 @@ func TestMigrateReadsLegacyCacheName(t *testing.T) {
 		t.Errorf("normalized cache should hold the legacy codes: %v", codes)
 	}
 }
+
+// TestCredentialsFromEnvironment: with no -e/-p, BL3_EMAIL and BL3_PASSWORD are
+// used without prompting (compose can pass both via `environment:`); an explicit
+// -e still wins over BL3_EMAIL.
+func TestCredentialsFromEnvironment(t *testing.T) {
+	srv, posted := loginCaptureServer(t)
+	env := []string{"BL3_EMAIL=env@example.com", "BL3_PASSWORD=envpw"}
+
+	out := runCLI(t, srv.URL, "", env)
+	if !strings.Contains(out, "Logging in as 'env@example.com'") {
+		t.Errorf("BL3_EMAIL should be used:\n%s", out)
+	}
+	if strings.Contains(out, "Enter username") || strings.Contains(out, "Enter password") {
+		t.Errorf("should not prompt when both variables are set:\n%s", out)
+	}
+	if got := posted(); got != "envpw" {
+		t.Errorf("posted password = %q, want %q", got, "envpw")
+	}
+
+	out = runCLI(t, srv.URL, "", env, "-e", "flag@example.com")
+	if !strings.Contains(out, "Logging in as 'flag@example.com'") {
+		t.Errorf("-e should win over BL3_EMAIL:\n%s", out)
+	}
+}
