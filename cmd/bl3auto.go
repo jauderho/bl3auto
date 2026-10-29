@@ -211,7 +211,43 @@ const SUCCESS = "success!"
 const NOTFOUND = "not found."
 const DOTDOTDOT = "' . . . . . "
 
-var usernameHash string
+// usernameHash names the per-account cache file: a hash of the normalized email.
+// legacyUsernameHash is the hash of the email exactly as typed, which older
+// versions used; it is empty when the two are the same.
+var usernameHash, legacyUsernameHash string
+
+// emailHash returns the hex SHA-256 of s.
+func emailHash(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+// setAccount selects the cache file for username. Email case and surrounding
+// spaces are ignored, so "Me@x.com" and "me@x.com" share one cache.
+func setAccount(username string) {
+	usernameHash = emailHash(strings.ToLower(strings.TrimSpace(username)))
+	legacyUsernameHash = ""
+	if legacy := emailHash(username); legacy != usernameHash {
+		legacyUsernameHash = legacy
+	}
+}
+
+// readableCacheFilename returns name, or the cache file an older version wrote for
+// the same account (email hashed exactly as typed) when only that one exists.
+// Saves always use name, so the legacy file is migrated on the next write.
+func readableCacheFilename(folder *cacheFolder, name string) string {
+	if folder == nil || legacyUsernameHash == "" {
+		return name
+	}
+	if _, err := os.Stat(filepath.Join(folder.path, name)); err == nil {
+		return name
+	}
+	legacy := legacyUsernameHash + "-shift-codes.json"
+	if _, err := os.Stat(filepath.Join(folder.path, legacy)); err == nil {
+		return legacy
+	}
+	return name
+}
 
 // shiftOptions carries the resolved CLI options into the redemption routine.
 type shiftOptions struct {
@@ -545,18 +581,19 @@ func runMigrate() {
 		return
 	}
 
-	data, err := folder.ReadFile(configFilename)
+	src := readableCacheFilename(folder, configFilename)
+	data, err := folder.ReadFile(src)
 	if err != nil {
 		fmt.Println("No redeemed-codes cache to migrate.")
 		return
 	}
 	var existing redeemedCache
-	if json.Unmarshal(data, &existing) == nil && existing.Codes != nil && existing.Version == cacheVersion {
+	if src == configFilename && json.Unmarshal(data, &existing) == nil && existing.Codes != nil && existing.Version == cacheVersion {
 		fmt.Printf("Cache is already version %d (nothing to do).\n", cacheVersion)
 		return
 	}
 
-	codes, lastRun, _ := readRedeemedCache(folder, configFilename)
+	codes, lastRun, _ := readRedeemedCache(folder, src)
 	if err := writeRedeemedCache(folder, configFilename, codes, lastRun); err != nil {
 		printError(err)
 		return
@@ -570,7 +607,7 @@ func runMigrate() {
 func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) bool {
 	cacheFolder := resolveCacheFolder()
 	configFilename := usernameHash + "-shift-codes.json"
-	redeemedCodes, lastRun, existed := loadRedeemedCodes(cacheFolder, configFilename)
+	redeemedCodes, lastRun, existed := loadRedeemedCodes(cacheFolder, readableCacheFilename(cacheFolder, configFilename))
 
 	// Gather the candidate codes: a single code, or the full list from the source.
 	var codes []bl3.ShiftCode
@@ -1014,10 +1051,7 @@ func run() int {
 		username = string(line)
 	}
 
-	// SHA256 Hash (selects the per-account redeemed-codes cache file).
-	hasher := sha256.New()
-	hasher.Write([]byte(username))
-	usernameHash = hex.EncodeToString(hasher.Sum(nil))
+	setAccount(username)
 
 	// --migrate is a standalone, login-free maintenance op: just upgrade the cache.
 	if migrate {

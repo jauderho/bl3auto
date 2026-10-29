@@ -1603,3 +1603,70 @@ func TestPasswordFromEnvironment(t *testing.T) {
 		t.Errorf("-p should win over BL3_PASSWORD; posted %q", got)
 	}
 }
+
+// useAccount calls setAccount for a test and restores both account globals after.
+func useAccount(t *testing.T, username string) {
+	t.Helper()
+	oh, ol := usernameHash, legacyUsernameHash
+	t.Cleanup(func() { usernameHash, legacyUsernameHash = oh, ol })
+	setAccount(username)
+}
+
+func TestSetAccountIgnoresEmailCase(t *testing.T) {
+	useAccount(t, "  Me@Example.COM ")
+	mixed, legacy := usernameHash, legacyUsernameHash
+	useAccount(t, "me@example.com")
+	if usernameHash != mixed {
+		t.Errorf("case/space variants should share a cache: %s != %s", usernameHash, mixed)
+	}
+	if legacyUsernameHash != "" {
+		t.Errorf("an already-normalized email needs no legacy name, got %q", legacyUsernameHash)
+	}
+	if legacy != emailHash("  Me@Example.COM ") {
+		t.Errorf("legacy name should hash the email as typed")
+	}
+}
+
+// TestDoShiftReadsLegacyCacheName: a cache written by an older version under the
+// email as typed ("Me@Example.com") is still read, so cached codes are skipped, and
+// the save goes to the normalized name.
+func TestDoShiftReadsLegacyCacheName(t *testing.T) {
+	shrinkBackoff(t, 5)
+	dir := useTempCache(t)
+	useAccount(t, "Me@Example.com")
+	legacyName := emailHash("Me@Example.com") + "-shift-codes.json"
+	if err := writeRedeemedCache(&cacheFolder{path: dir}, legacyName, bl3.ShiftCodeMap{"OLDCODE": {"steam"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	srv, queries := countingShiftServer(t, `[{"meta":{},"codes":[{"code":"OLDCODE","expired":false}]}]`)
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+	if *queries != 0 {
+		t.Errorf("code cached under the legacy name should be skipped, got %d queries:\n%s", *queries, out)
+	}
+	saved, _, existed := readRedeemedCache(&cacheFolder{path: dir}, emailHash("me@example.com")+"-shift-codes.json")
+	if !existed || !saved.Contains("OLDCODE", "steam") {
+		t.Errorf("cache should be saved under the normalized name with legacy contents: %v", saved)
+	}
+}
+
+// TestMigrateReadsLegacyCacheName: --migrate upgrades a cache stored under the
+// email as typed into the normalized file name.
+func TestMigrateReadsLegacyCacheName(t *testing.T) {
+	dir := useTempCache(t)
+	useAccount(t, "Me@Example.com")
+	legacy := filepath.Join(dir, emailHash("Me@Example.com")+"-shift-codes.json")
+	if err := os.WriteFile(legacy, []byte(`{"AAAAA":["steam"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := captureStdout(t, runMigrate)
+	if !strings.Contains(out, "Migrated 1 codes") {
+		t.Fatalf("expected a migration, got:\n%s", out)
+	}
+	codes, _, existed := readRedeemedCache(&cacheFolder{path: dir}, emailHash("me@example.com")+"-shift-codes.json")
+	if !existed || !codes.Contains("AAAAA", "steam") {
+		t.Errorf("normalized cache should hold the legacy codes: %v", codes)
+	}
+}
