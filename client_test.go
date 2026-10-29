@@ -286,7 +286,7 @@ func TestNewBl3ClientFallbackWhenRemoteUnreachable(t *testing.T) {
 }
 
 func TestNewBl3ClientUsesValidRemote(t *testing.T) {
-	remote := `{"version":"9.9.9","baseUrl":"https://x","homeUrl":"https://x/home","loginUrl":"https://x/sessions","shiftConfig":{"codeListUrlV2":"https://x/v2","redemptionInfoUrl":"https://x/e","redemptionUrl":"https://x/c"}}`
+	remote := `{"version":"9.9.9","baseUrl":"https://shift.gearboxsoftware.com","homeUrl":"https://shift.gearboxsoftware.com/home-v2","loginUrl":"https://shift.gearboxsoftware.com/sessions","shiftConfig":{"codeListUrlV2":"https://raw.githubusercontent.com/x/v2.json","redemptionInfoUrl":"https://shift.gearboxsoftware.com/e","redemptionUrl":"https://shift.gearboxsoftware.com/c"}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, remote)
 	}))
@@ -299,8 +299,62 @@ func TestNewBl3ClientUsesValidRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewBl3Client: %v", err)
 	}
-	if c.Config.Version != "9.9.9" || c.Config.HomeUrl != "https://x/home" {
+	if c.Config.Version != "9.9.9" || c.Config.HomeUrl != "https://shift.gearboxsoftware.com/home-v2" {
 		t.Errorf("expected the valid remote config to be used, got %+v", c.Config)
+	}
+}
+
+// TestNewBl3ClientRejectsUntrustedRemote: a complete remote config whose login URL
+// points off SHiFT (e.g. a malicious commit) must be ignored, so the password is
+// never posted there; the embedded config is used instead.
+func TestNewBl3ClientRejectsUntrustedRemote(t *testing.T) {
+	remote := `{"version":"9.9.9","baseUrl":"https://shift.gearboxsoftware.com","homeUrl":"https://shift.gearboxsoftware.com/home","loginUrl":"https://evil.example/sessions","shiftConfig":{"codeListUrlV2":"https://raw.githubusercontent.com/x/v2.json","redemptionInfoUrl":"https://shift.gearboxsoftware.com/e","redemptionUrl":"https://shift.gearboxsoftware.com/c"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, remote)
+	}))
+	defer srv.Close()
+	orig := remoteConfigUrl
+	remoteConfigUrl = srv.URL
+	defer func() { remoteConfigUrl = orig }()
+
+	c, err := NewBl3Client(t.Context(), "")
+	if err != nil {
+		t.Fatalf("NewBl3Client: %v", err)
+	}
+	if strings.Contains(c.Config.LoginUrl, "evil") || c.Config.Version == "9.9.9" {
+		t.Errorf("untrusted remote config was used: %+v", c.Config)
+	}
+}
+
+func TestRemoteConfigTrusted(t *testing.T) {
+	embedded := Bl3Config{}
+	if err := json.Unmarshal(embeddedConfig, &embedded); err != nil {
+		t.Fatal(err)
+	}
+	if !remoteConfigTrusted(embedded) {
+		t.Fatalf("embedded config must be trusted: %+v", embedded)
+	}
+	cases := map[string]func(*Bl3Config){
+		"http login":           func(c *Bl3Config) { c.LoginUrl = "http://shift.gearboxsoftware.com/sessions" },
+		"other host login":     func(c *Bl3Config) { c.LoginUrl = "https://evil.example/sessions" },
+		"lookalike host":       func(c *Bl3Config) { c.LoginUrl = "https://shift.gearboxsoftware.com.evil.example/sessions" },
+		"userinfo trick":       func(c *Bl3Config) { c.LoginUrl = "https://shift.gearboxsoftware.com@evil.example/sessions" },
+		"explicit port":        func(c *Bl3Config) { c.HomeUrl = "https://shift.gearboxsoftware.com:8443/home" },
+		"redemption off host":  func(c *Bl3Config) { c.Shift.RedemptionUrl = "https://evil.example/c" },
+		"code list off GitHub": func(c *Bl3Config) { c.Shift.CodeListUrlV2 = "https://evil.example/v2.json" },
+		"v1 list off GitHub":   func(c *Bl3Config) { c.Shift.CodeListUrlV1 = "https://evil.example/v1.json" },
+	}
+	for name, mutate := range cases {
+		c := embedded
+		mutate(&c)
+		if remoteConfigTrusted(c) {
+			t.Errorf("%s: should not be trusted", name)
+		}
+	}
+	noV1 := embedded
+	noV1.Shift.CodeListUrlV1 = ""
+	if !remoteConfigTrusted(noV1) {
+		t.Error("an empty optional v1 URL should still be trusted")
 	}
 }
 

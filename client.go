@@ -359,10 +359,38 @@ func configComplete(c Bl3Config) bool {
 		c.Shift.CodeListUrlV2 != ""
 }
 
+// Hosts a remote config may point at. The login URL receives the user's
+// password, so a remote config must never redirect requests anywhere else.
+const (
+	shiftHost    = "shift.gearboxsoftware.com"
+	codeListHost = "raw.githubusercontent.com"
+)
+
+// onHost reports whether raw is an https URL on host. An empty raw is allowed
+// (optional fields such as the v1 code list).
+func onHost(raw, host string) bool {
+	if raw == "" {
+		return true
+	}
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Host == host && u.User == nil
+}
+
+// remoteConfigTrusted reports whether every URL in a downloaded config points at
+// SHiFT (site endpoints) or GitHub raw (code lists). A config that fails this is
+// ignored in favour of the embedded one.
+func remoteConfigTrusted(c Bl3Config) bool {
+	return onHost(c.BaseUrl, shiftHost) && onHost(c.HomeUrl, shiftHost) &&
+		onHost(c.LoginUrl, shiftHost) && onHost(c.Shift.RedemptionInfoUrl, shiftHost) &&
+		onHost(c.Shift.RedemptionUrl, shiftHost) &&
+		onHost(c.Shift.CodeListUrlV1, codeListHost) && onHost(c.Shift.CodeListUrlV2, codeListHost)
+}
+
 // loadConfig resolves the runtime config. An explicit --config path is used
 // as-is. Otherwise the published remote config is tried first (so endpoints can
-// be hot-fixed without a release); if it is unreachable, unparseable, or
-// incompatible with this binary, the embedded config.json is used instead.
+// be hot-fixed without a release); if it is unreachable, unparseable,
+// incompatible with this binary, or points anywhere other than SHiFT and GitHub
+// raw (see remoteConfigTrusted), the embedded config.json is used instead.
 func loadConfig(ctx context.Context, configPath string) (Bl3Config, error) {
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
@@ -378,7 +406,7 @@ func loadConfig(ctx context.Context, configPath string) (Bl3Config, error) {
 
 	if data, err := fetchBytes(ctx, remoteConfigUrl); err == nil {
 		remote := Bl3Config{}
-		if json.Unmarshal(data, &remote) == nil && configComplete(remote) {
+		if json.Unmarshal(data, &remote) == nil && configComplete(remote) && remoteConfigTrusted(remote) {
 			return remote, nil
 		}
 	}
