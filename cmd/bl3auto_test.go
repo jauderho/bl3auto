@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1514,5 +1516,72 @@ func TestDoShiftStopsWhenLaunchRequired(t *testing.T) {
 	cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
 	if len(cached) != 0 {
 		t.Errorf("nothing should be recorded as redeemed: %v", cached)
+	}
+}
+
+// TestHelperRunMain is not a real test: when BL3AUTO_RUN_MAIN is set, the test
+// binary re-executes itself into run() with the args in BL3AUTO_ARGS, so tests
+// can drive the real CLI entry point (stdin prompts, flags) in a child process.
+func TestHelperRunMain(t *testing.T) {
+	if os.Getenv("BL3AUTO_RUN_MAIN") != "1" {
+		t.Skip("helper process only")
+	}
+	os.Args = append([]string{"bl3auto"}, strings.Split(os.Getenv("BL3AUTO_ARGS"), "\n")...)
+	os.Exit(run())
+}
+
+// loginCaptureServer serves a SHiFT login page and records the password posted to
+// /sessions; the login itself always fails (200), so run() exits before doShift.
+func loginCaptureServer(t *testing.T) (*httptest.Server, func() string) {
+	t.Helper()
+	var mu sync.Mutex
+	posted := "<no login attempt>"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/sessions" {
+			_ = r.ParseForm()
+			mu.Lock()
+			posted = r.PostForm.Get("user[password]")
+			mu.Unlock()
+			return
+		}
+		_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() string { mu.Lock(); defer mu.Unlock(); return posted }
+}
+
+// runCLI runs run() in a child process with the given args, stdin and extra env,
+// against a local config pointing at baseURL. It returns the combined output.
+func runCLI(t *testing.T, baseURL, stdin string, env []string, args ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(cfg, []byte(`{"baseUrl":"`+baseURL+`","homeUrl":"`+baseURL+`/home","loginUrl":"`+baseURL+`/sessions",`+
+		`"shiftConfig":{"codeListUrlV2":"`+baseURL+`/v2.json","redemptionInfoUrl":"`+baseURL+`/q","redemptionUrl":"`+baseURL+`/r"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperRunMain$")
+	cmd.Dir = dir // no local codes/ dir here, and nothing is written: login fails first
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = append(os.Environ(), append(env,
+		"BL3AUTO_RUN_MAIN=1",
+		"BL3AUTO_ARGS="+strings.Join(append([]string{"--config", cfg}, args...), "\n"))...)
+	out, err := cmd.CombinedOutput()
+	if _, exited := errors.AsType[*exec.ExitError](err); err != nil && !exited {
+		t.Fatalf("running CLI: %v", err) // a non-zero exit (failed login) is expected
+	}
+	return string(out)
+}
+
+// TestPipedCredentialsReachLogin: with no -e/-p, a piped "email\npassword\n" must
+// post the password from the second line (both prompts share one stdin reader).
+func TestPipedCredentialsReachLogin(t *testing.T) {
+	srv, posted := loginCaptureServer(t)
+	out := runCLI(t, srv.URL, "me@example.com\nsecretpw\n", nil)
+	if !strings.Contains(out, "Logging in as 'me@example.com'") {
+		t.Fatalf("username not read from stdin:\n%s", out)
+	}
+	if got := posted(); got != "secretpw" {
+		t.Errorf("posted password = %q, want %q\n%s", got, "secretpw", out)
 	}
 }

@@ -1004,10 +1004,12 @@ func run() int {
 	gameInclude := splitCSV(game)
 	gameSkip := splitCSV(skipGame)
 
+	// One reader for every prompt: a second bufio.Reader would find the input the
+	// first one already buffered gone (e.g. piped "email\npassword\n").
+	stdin := bufio.NewReader(os.Stdin)
 	if username == "" {
-		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter username (email): ")
-		line, _, _ := reader.ReadLine()
+		line, _, _ := stdin.ReadLine()
 		username = string(line)
 	}
 
@@ -1033,8 +1035,7 @@ func run() int {
 			}
 			password = string(pw)
 		} else {
-			reader := bufio.NewReader(os.Stdin)
-			line, _, _ := reader.ReadLine()
+			line, _, _ := stdin.ReadLine()
 			password = string(line)
 		}
 	}
