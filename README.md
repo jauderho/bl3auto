@@ -15,16 +15,34 @@ following the login + redemption flow (the old `api.2k.com` Borderlands API is g
 
 ## Getting Started
 
-1. Make a SHiFT account at [Borderlands](https://borderlands.com/)
-2. Download program from above link
-3. Unzip the folder
-4. Run it, you will be prompted for username and password
-5. Enter username and password (we only use this info to sign into borderlands)
-6. Watch it do its magic
-7. Repeat when more codes come out (or set up a cron job)
-
+1. Make a SHiFT account at [shift.gearboxsoftware.com](https://shift.gearboxsoftware.com)
+   and link the platforms you play on (Steam, Epic, PSN, Xbox, ...).
+2. Install bl3auto (see [Installing](#installing)): Docker Compose, Docker, Homebrew, or a
+   prebuilt binary.
+3. Give it your SHiFT email and password (see [Credentials](#credentials)). They are only
+   sent to `shift.gearboxsoftware.com` to sign in.
+4. Run it. The first time, add `--rampup` so SHiFT doesn't rate-limit a large batch.
+5. Run it again whenever new codes come out, or schedule it (see
+   [Running on a schedule](#running-on-a-schedule)).
 
 Run it with `--help` to view command line args that are supported.
+
+### Credentials
+
+bl3auto takes your SHiFT email and password, in this order of precedence:
+
+1. The `-e`/`--email` and `-p`/`--password` flags.
+2. The `BL3_EMAIL` and `BL3_PASSWORD` environment variables.
+3. Otherwise it prompts for them (the password is not echoed).
+
+Prefer the environment variables (or the prompt) over `-p`: command-line arguments are
+visible to other users on the machine in the process list.
+
+```sh
+export BL3_EMAIL='me@example.com'
+export BL3_PASSWORD='secret'
+bl3auto
+```
 
 ### Command line flags
 
@@ -108,44 +126,74 @@ cache file to the current format.
 
 ### Installing
 
-#### Docker
-Source: https://hub.docker.com/r/jauderho/bl3auto/
-1. Install Docker
-2. Run `docker pull jauderho/bl3auto:latest`
-3. Optional: Create `codes` subdirectory to store output from previous runs with `mkdir codes`
-4. Run `docker run -it -v codes:/root/.config/bl3auto/bl3auto jauderho/bl3auto:latest`
-    + The mounted volume will keep track of existing codes that have been used already
+Multi-platform images are published to Docker Hub
+([`jauderho/bl3auto`](https://hub.docker.com/r/jauderho/bl3auto/)) and GHCR
+(`ghcr.io/jauderho/bl3auto`), tagged `latest` and with each release version (e.g.
+`v2.3.9`). The image's entrypoint is `bl3auto`, so anything after the image name is
+passed as flags. The redeemed-codes cache lives at `/root/.config/bl3auto/bl3auto` inside
+the container; mount a directory there so it survives between runs.
 
 #### Docker Compose (preferred)
-1. Install Docker and docker-compose
-2. Create .env and put the following in the file
-    + Add `BL3_EMAIL="me@myemail.com" and BL3_PASSWORD="mypassword"`
-    + Replace `"me@myemail.com"` with your login email address
-    + Replace `"mypassword"` with your login password
-3. Use the compose.yml file below (Updated as of 10/16/2021)
 
+1. Install Docker with the Compose plugin.
+2. In a new directory, create the cache directory: `mkdir codes`
+3. Create a `.env` file with your credentials (keep it private, e.g. `chmod 600 .env`):
+
+   ```sh
+   BL3_EMAIL=me@example.com
+   BL3_PASSWORD=secret
+   ```
+
+4. Create `compose.yml` (as in this repo's [compose.yml](compose.yml)):
+
+   ```yaml
+   services:
+     bl3auto:
+       container_name: bl3auto
+       image: jauderho/bl3auto:latest
+       environment:
+         BL3_EMAIL: ${BL3_EMAIL}
+         BL3_PASSWORD: ${BL3_PASSWORD}
+       volumes:
+         - './codes:/root/.config/bl3auto/bl3auto'
+   ```
+
+5. Run `docker compose up`. To pass flags, add a `command:` with them, e.g.
+   `command: ["--rampup"]` for the first run.
+
+#### Docker
+
+```sh
+mkdir -p codes
+docker run -it --rm \
+  -e BL3_EMAIL -e BL3_PASSWORD \
+  -v "$PWD/codes:/root/.config/bl3auto/bl3auto" \
+  jauderho/bl3auto:latest
 ```
-services:
-  bl3auto:
-    container_name: bl3auto
-    image: jauderho/bl3auto:latest
-    environment:
-      BL3_EMAIL: ${BL3_EMAIL}
-      BL3_PASSWORD: ${BL3_PASSWORD}
-    volumes:
-      - './codes:/root/.config/bl3auto/bl3auto'
 
-volumes:
-  codes:
+`-e BL3_EMAIL -e BL3_PASSWORD` passes the variables from your shell; leave them out to be
+prompted instead. Append flags after the image name, e.g. `jauderho/bl3auto:latest --dryrun`.
+
+#### Homebrew (macOS)
+
+```sh
+brew install --cask jauderho/bl3auto/bl3auto
 ```
 
-4. Optional: Create `codes` subdirectory to store output from previous runs with `mkdir codes`
-    + Doing so will allow bl3auto to compare and avoid trying to redeem a previously used code
-5. Run `docker-compose up`
+#### Prebuilt binaries and packages
 
-#### Using the prebuilt releases
-The binaries/executables are released
-[here](https://github.com/jauderho/bl3auto/releases)
+Download an archive for your platform, or a `.deb`/`.rpm` package, from the
+[releases page](https://github.com/jauderho/bl3auto/releases), unpack it and run
+`bl3auto`. Every artifact is signed with [cosign](https://github.com/sigstore/cosign)
+(`.bundle` files) and has an SBOM.
+
+### Running on a schedule
+
+New codes appear every few days. A daily cron job is plenty, e.g. with Docker Compose:
+
+```sh
+0 9 * * * cd /path/to/bl3auto && docker compose up >> bl3auto.log 2>&1
+```
 
 ## FAQs
 
@@ -167,6 +215,12 @@ you will be able to run the app directly or from your terminal without any issue
 ### Why does my antivirus flag this program?
 It's a false positive. If you don't trust us, you can look at the code and
 compile it yourself. That's one of the beauties of an open source project!
+
+### It says "launch a SHiFT-enabled title first, then try again later"
+SHiFT stops accepting redemptions for your account after a batch of them, until you
+launch a SHiFT-enabled Borderlands or Wonderlands game (and sign in to SHiFT in it).
+bl3auto stops the run when this happens and saves progress. Launch a game, then run
+bl3auto again; it skips codes it has already redeemed.
 
 ### It's not working. What should I do?
 File an issue here with as much detail as you can provide. We're working on
