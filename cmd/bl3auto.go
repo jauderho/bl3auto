@@ -640,6 +640,7 @@ func doShift(ctx context.Context, client *bl3.Bl3Client, opts shiftOptions) bool
 	stoppedShadowban := false
 	sessionExpired := false
 	reachedCount := false
+	launchRequired := false // SHiFT wants a game launched before any more redemptions
 	interrupted := false
 	consecutive := 0  // consecutive non-200 code-query responses (see --rampup)
 	cleanStreak := 0  // consecutive clean (200) code queries (drives adaptive speed-up)
@@ -844,6 +845,12 @@ codeLoop:
 					break codeLoop
 				}
 				fmt.Println(rerr)
+				if errors.Is(rerr, bl3.ErrLaunchGame) {
+					// Account-wide gate: every further redemption would fail the same
+					// way, so stop now instead of burning requests on the rest.
+					launchRequired = true
+					break codeLoop
+				}
 				low := strings.ToLower(rerr.Error())
 				switch {
 				case strings.Contains(low, "expired"):
@@ -885,6 +892,9 @@ codeLoop:
 		fmt.Println("Interrupted. Progress saved; re-run to continue.")
 	case reachedCount:
 		fmt.Printf("Reached the --count limit of %d successful redemption(s). Progress saved; re-run to continue.\n", opts.count)
+	case launchRequired:
+		fmt.Println("SHiFT requires you to launch a SHiFT-enabled game before redeeming more codes.")
+		fmt.Println("Progress saved; launch a Borderlands/Wonderlands title, then re-run to continue.")
 	case sessionExpired:
 		fmt.Println("Your SHiFT session expired or you're not signed in. Progress saved; re-run to sign in again.")
 	case stoppedShadowban:

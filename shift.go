@@ -16,6 +16,11 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// ErrLaunchGame is returned when SHiFT refuses a redemption until the account
+// launches a SHiFT-enabled game. The gate is account-wide, so every further
+// redemption fails the same way: callers should stop the run, not try more codes.
+var ErrLaunchGame = errors.New("launch a SHiFT-enabled title first, then try again later")
+
 // pollInterval is how long pollRedemptionStatus waits between polls of the
 // async redemption-status endpoint.
 const pollInterval = 500 * time.Millisecond
@@ -394,7 +399,7 @@ func statusFromText(text string, visitedRedemption bool) error {
 	case strings.Contains(lower, "not available"):
 		return errors.New("this SHiFT code is not available for your account")
 	case strings.Contains(lower, "launch a shift"):
-		return errors.New("launch a SHiFT-enabled title first, then try again later")
+		return ErrLaunchGame
 	default:
 		return errors.New(strings.TrimSpace(text))
 	}

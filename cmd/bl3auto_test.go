@@ -1470,3 +1470,49 @@ func TestDoShiftAlreadyRedeemedAtSubmission(t *testing.T) {
 		t.Errorf("expected the service to be recorded in the redeemed-codes cache (self-healing), got %v", cached)
 	}
 }
+
+// TestDoShiftStopsWhenLaunchRequired: SHiFT's "launch a SHiFT-enabled title" answer
+// is an account-wide gate, so the run stops after the first one instead of trying
+// every remaining form, and nothing is recorded as redeemed.
+func TestDoShiftStopsWhenLaunchRequired(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-launch-required"
+	useTempCache(t)
+
+	posts := 0
+	listJSON := rampupListJSON(6)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			code := r.URL.Query().Get("code")
+			for _, svc := range []string{"steam", "epic"} {
+				_, _ = io.WriteString(w, `<form class="new_archway_code_redemption" id="new_archway_code_redemption">`+
+					`<input id="archway_code_redemption_service" name="archway_code_redemption[service]" value="`+svc+`">`+
+					`<input name="archway_code_redemption[code]" value="`+code+`"></form>`)
+			}
+		case "/code_redemptions":
+			posts++
+			_, _ = io.WriteString(w, `<div class="alert">To continue to redeem SHiFT codes, please launch a SHiFT-enabled title first!</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+	if posts != 1 {
+		t.Errorf("run should stop after the first launch-required answer, got %d redemption POSTs", posts)
+	}
+	if !strings.Contains(out, "launch a SHiFT-enabled game before redeeming more codes") {
+		t.Errorf("expected launch-required stop message, got:\n%s", out)
+	}
+	cached, _, _ := readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
+	if len(cached) != 0 {
+		t.Errorf("nothing should be recorded as redeemed: %v", cached)
+	}
+}

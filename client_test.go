@@ -731,6 +731,13 @@ func TestStatusFromTextAllBranches(t *testing.T) {
 	}
 }
 
+func TestStatusFromTextLaunchGame(t *testing.T) {
+	err := statusFromText("To continue to redeem SHiFT codes, please launch a SHiFT-enabled title first!", true)
+	if !errors.Is(err, ErrLaunchGame) {
+		t.Errorf("expected ErrLaunchGame, got %v", err)
+	}
+}
+
 func TestShiftCodeMapContains(t *testing.T) {
 	m := ShiftCodeMap{"CODE": {"steam", "epic"}}
 	if !m.Contains("CODE", "steam") {
