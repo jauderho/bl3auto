@@ -1,12 +1,14 @@
-FROM ghcr.io/jauderho/golang:1.26.4-alpine3.23@sha256:d893e6d165d70d6da631f70850f645edeaf426b60e7394d41dac025d71157390 AS build
+FROM ghcr.io/jauderho/golang:1.27.3-alpine3.24@sha256:912bbb72c34b2da5574157e979ed57dca24dfad4d39f87e19df0db3b6c2008c6 AS build
 
 COPY . /go/src/github.com/jauderho/bl3auto
 WORKDIR /go/src/github.com/jauderho/bl3auto
 
 ENV GO111MODULE=on
+# Static binary: the scratch runtime image has no libc.
+ENV CGO_ENABLED=0
 
 RUN apk update \
-	&& apk add --no-cache git \
+	&& apk add --no-cache git ca-certificates \
 	&& go mod download \
 	&& go mod verify \
 	&& go build -v -trimpath -ldflags="-s -w" cmd/bl3auto.go
@@ -15,8 +17,7 @@ RUN apk update \
 # ----------------------------------------------------------------------------
 
 
-#FROM scratch
-FROM ghcr.io/jauderho/alpine:3.24.3@sha256:d73d61c3d73b9dc360093fe38788808f66b47c3e9a187215dc3d90ccb5461aa0
+FROM scratch
 
 LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
 LABEL org.opencontainers.image.url="https://github.com/jauderho/bl3auto"
@@ -25,6 +26,12 @@ LABEL org.opencontainers.image.source="https://github.com/jauderho/bl3auto"
 LABEL org.opencontainers.image.title="jauderho/bl3auto"
 LABEL org.opencontainers.image.description="Borderlands Auto SHiFT Code Redemption System"
 
+# CA roots for HTTPS to SHiFT and GitHub raw (scratch ships none).
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /go/src/github.com/jauderho/bl3auto/bl3auto /usr/local/bin/
+
+# scratch has no /etc/passwd, so pin HOME: os.UserConfigDir() must keep
+# resolving to /root/.config, where the codes volume is mounted.
+ENV HOME=/root
 
 ENTRYPOINT ["/usr/local/bin/bl3auto"]
