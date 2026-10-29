@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## v2.3.8 - 2026-10-29
+### Security
+* The remote `config.json` fetched at startup is ignored (the embedded config is used)
+  unless every URL is https on `shift.gearboxsoftware.com` or, for code lists,
+  `raw.githubusercontent.com`, so a bad config can never redirect the login password.
+* The password can come from the `BL3_PASSWORD` environment variable instead of `-p`,
+  which is visible to other users in the process list. `compose.yml` now uses it.
+### Fixed
+* Piping the email and password on stdin (`email\npassword\n`) no longer posts an
+  empty password.
+* The redeemed-codes cache file name ignores email case and surrounding spaces. A cache
+  saved under the old exact-spelling name is still read and moved on the next save.
+
 ## v2.3.7 - 2026-10-29
 ### Fixed
 * Docker: the image now pins `HOME=/root`, so the redeemed-codes cache is read from
