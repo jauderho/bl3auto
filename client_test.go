@@ -490,8 +490,7 @@ func TestGetCodeRedemptionFormsBodyReadError(t *testing.T) {
 	c := newTestClient(t, srv.URL)
 
 	_, _, err := c.GetCodeRedemptionForms(t.Context(), "TRUNCATED")
-	var bodyErr *BodyReadError
-	if !errors.As(err, &bodyErr) {
+	if _, ok := errors.AsType[*BodyReadError](err); !ok {
 		t.Fatalf("expected *BodyReadError, got %v (%T)", err, err)
 	}
 }

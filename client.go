@@ -133,15 +133,13 @@ func NewHttpClient() (*HttpClient, error) {
 	}
 
 	return &HttpClient{
-		Client: http.Client{
-			Jar:     jar,
-			Timeout: requestTimeout,
-			// Don't auto-follow redirects: the SHiFT login (302) and code
-			// redemption (302) flows need to inspect the Location header and
-			// drive the redirect chain manually, mirroring autoshift.
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+		Jar:     jar,
+		Timeout: requestTimeout,
+		// Don't auto-follow redirects: the SHiFT login (302) and code
+		// redemption (302) flows need to inspect the Location header and
+		// drive the redirect chain manually, mirroring autoshift.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 		headers: http.Header{
 			// Browser-like headers; the SHiFT site rejects the old "BL3 Auto SHiFT"
@@ -207,10 +205,7 @@ func (client *HttpClient) Slowdown(factor float64, ceil time.Duration) {
 	if client.minInterval <= 0 || factor <= 1 {
 		return
 	}
-	next := time.Duration(float64(client.minInterval) * factor)
-	if next > ceil {
-		next = ceil
-	}
+	next := min(time.Duration(float64(client.minInterval)*factor), ceil)
 	client.minInterval = next
 }
 

@@ -268,7 +268,7 @@ func allServicesRedeemed(m bl3.ShiftCodeMap, code string, forms []bl3.Redemption
 // splitCSV splits a comma-separated flag value into trimmed, non-empty tokens.
 func splitCSV(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		if t := strings.TrimSpace(p); t != "" {
 			out = append(out, t)
 		}
@@ -706,8 +706,7 @@ codeLoop:
 		// A non-200 code-query (commonly a 302) is SHiFT throttling us. In rampup we
 		// count these: back off after a few in a row, and stop cleanly once it's
 		// clearly a shadowban. A clean (200) response resets the counter.
-		var statusErr *bl3.CodeQueryStatusError
-		if errors.As(err, &statusErr) {
+		if statusErr, ok := errors.AsType[*bl3.CodeQueryStatusError](err); ok {
 			// A redirect to sign in means our session is gone, not a throttle:
 			// backing off won't help, so stop and tell the user to re-run.
 			if isAuthRedirect(statusErr.Location) {
@@ -755,8 +754,7 @@ codeLoop:
 			}
 			continue
 		}
-		var bodyErr *bl3.BodyReadError
-		if errors.As(err, &bodyErr) {
+		if _, ok := errors.AsType[*bl3.BodyReadError](err); ok {
 			// A read failure is a transient network blip (a dropped/truncated
 			// connection), not a SHiFT throttle or shadowban signal: it must not
 			// affect the consecutive-non-200 counter, the adaptive throttle, or
@@ -918,10 +916,7 @@ codeLoop:
 // consecutiveBackoff returns the escalating sleep for the Nth consecutive non-200
 // code query on a bulk run, capped at backoffMax.
 func consecutiveBackoff(consecutive int) time.Duration {
-	shift := consecutive - backoffAfter
-	if shift < 0 {
-		shift = 0
-	}
+	shift := max(consecutive-backoffAfter, 0)
 	wait := backoffBase << uint(shift)
 	if wait > backoffMax || wait <= 0 {
 		wait = backoffMax
