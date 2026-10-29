@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## v2.3.7 - 2026-10-29
+### Fixed
+* Docker: the image now pins `HOME=/root`, so the redeemed-codes cache is read from
+  and saved to the mounted `/root/.config/bl3auto/bl3auto` volume. Scratch-based
+  images without it silently ignored the cache and saved progress inside the container.
+* `compose.yml` passes only arguments (the image entrypoint is already `bl3auto`), so
+  `-e`/`-p` are no longer dropped.
+* Releases and CI build with Go 1.27, which `go.mod` requires (v2.3.6 shipped no assets).
+### Changed
+* Codes already in the redeemed-codes cache are skipped without a query by default;
+  `--refresh` re-checks them (e.g. after linking a new platform).
+* Codes are processed newest-first.
+* The run stops (progress saved) as soon as SHiFT asks you to launch a SHiFT-enabled
+  game, instead of trying every remaining code.
+* The repo `Dockerfile` builds a static binary on a `scratch` base.
+
 ## v2.3.0 - 2026-06-16
 ### Changed
 * Fixed authentication after Gearbox retired the `api.2k.com` Borderlands API.
