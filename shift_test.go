@@ -124,8 +124,7 @@ func (c *trackedConn) Close() error {
 // 11th response fetched at the end of the last iteration still has its body closed
 // before "too many redemption redirects" is returned. A custom Transport.DialContext
 // wraps every dialed connection to count Close calls: leaving a response body open
-// leaves its underlying connection open too (net/http closes the connection, rather
-// than pooling it, when a body is closed without first being drained), so a leaked
+// leaves its underlying connection in use, so after the idle pool is closed a leaked
 // body shows up directly as dialed > closed.
 func TestResolveRedemptionClosesFinalBodyOnRedirectExhaustion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +136,7 @@ func TestResolveRedemptionClosesFinalBodyOnRedirectExhaustion(t *testing.T) {
 	c := newTestClient(t, srv.URL)
 
 	var dialed, closed int32
-	c.Client.Transport = &http.Transport{
+	tr := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
 			if err != nil {
@@ -147,6 +146,7 @@ func TestResolveRedemptionClosesFinalBodyOnRedirectExhaustion(t *testing.T) {
 			return &trackedConn{Conn: conn, closed: &closed}, nil
 		},
 	}
+	c.Transport = tr
 
 	res, err := c.Get(t.Context(), srv.URL)
 	if err != nil {
@@ -161,6 +161,10 @@ func TestResolveRedemptionClosesFinalBodyOnRedirectExhaustion(t *testing.T) {
 	if dialed == 0 {
 		t.Fatal("expected at least one connection to have been dialed")
 	}
+	// Go may drain a small body on Close and pool its connection instead of closing
+	// it, so close the idle pool first. A leaked (still open) body keeps its
+	// connection in use, so it stays unclosed and the check below still catches it.
+	tr.CloseIdleConnections()
 	if got := atomic.LoadInt32(&closed); got != dialed {
 		t.Errorf("expected every dialed connection to be closed (dialed=%d, closed=%d); "+
 			"a shortfall means the final redirect response's body leaked its connection",
