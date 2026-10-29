@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## v2.3.9 - 2026-10-29
+### Added
+* The email can come from the `BL3_EMAIL` environment variable when `-e` is not given,
+  so Docker Compose can pass both credentials via `environment:` with no `command:`.
+  `-e` still takes precedence.
+### Changed
+* README: updated usage instructions (credentials, Docker Compose, Docker, Homebrew,
+  release packages, scheduling, and the "launch a SHiFT-enabled title" FAQ).
+
 ## v2.3.8 - 2026-10-29
 ### Security
 * The remote `config.json` fetched at startup is ignored (the embedded config is used)
