@@ -4,7 +4,8 @@ services:
     #build: .
     container_name: bl3auto
     image: jauderho/bl3auto:latest
-    command: ["bl3auto", "-e", "${BL3_EMAIL}", "-p", "${BL3_PASSWORD}"]
+    # Arguments only: the image's ENTRYPOINT is already the bl3auto binary.
+    command: ["-e", "${BL3_EMAIL}", "-p", "${BL3_PASSWORD}"]
     volumes:
       - './codes:/root/.config/bl3auto/bl3auto'
 
