@@ -28,11 +28,13 @@ type ShiftConfig struct {
 	AllowInactive     bool
 }
 
-// ShiftCode is a single code parsed from either code-list format.
+// ShiftCode is a single code parsed from either code-list format. Archived is
+// when the list first saw the code (format differs per source; see archivedTime).
 type ShiftCode struct {
-	Code    string `json:"code"`
-	Game    string `json:"game"`
-	Expired bool   `json:"expired"`
+	Code     string `json:"code"`
+	Game     string `json:"game"`
+	Expired  bool   `json:"expired"`
+	Archived string `json:"archived"`
 }
 
 // ShiftCodeMap tracks which services a code has been redeemed on (the on-disk cache).
@@ -100,19 +102,21 @@ func (client *Bl3Client) GetShiftCodesV1(ctx context.Context) ([]ShiftCode, erro
 
 // GetShiftCodes returns codes for the requested source. "v1"/"v2" force a single
 // source; any other value uses the default failover: try v2 first, fall back to
-// v1 if v2 errors or yields no codes. Results are de-duplicated by code.
+// v1 if v2 errors or yields no codes. Results are de-duplicated by code and
+// ordered newest-first, so fresh (still-valid) codes are redeemed before a
+// --count limit or a throttle stop ends the run.
 func (client *Bl3Client) GetShiftCodes(ctx context.Context, source string) ([]ShiftCode, error) {
 	switch source {
 	case "v1":
 		codes, err := client.GetShiftCodesV1(ctx)
-		return dedupeCodes(codes), err
+		return newestFirst(dedupeCodes(codes)), err
 	case "v2":
 		codes, err := client.GetShiftCodesV2(ctx)
-		return dedupeCodes(codes), err
+		return newestFirst(dedupeCodes(codes)), err
 	default:
 		codes, err := client.GetShiftCodesV2(ctx)
 		if err == nil && len(codes) > 0 {
-			return dedupeCodes(codes), nil
+			return newestFirst(dedupeCodes(codes)), nil
 		}
 		if err != nil {
 			client.logf("v2 code source failed (%v); falling back to v1", err)
@@ -120,7 +124,7 @@ func (client *Bl3Client) GetShiftCodes(ctx context.Context, source string) ([]Sh
 			client.logf("v2 code source returned no codes; falling back to v1")
 		}
 		v1, v1err := client.GetShiftCodesV1(ctx)
-		return dedupeCodes(v1), v1err
+		return newestFirst(dedupeCodes(v1)), v1err
 	}
 }
 
@@ -140,6 +144,34 @@ func dedupeCodes(codes []ShiftCode) []ShiftCode {
 		out = append(out, c)
 	}
 	return out
+}
+
+// archivedLayouts are the "archived" timestamp formats of the v2 and v1 code
+// lists respectively.
+var archivedLayouts = []string{
+	"2006-01-02 15:04:05.999999999-07:00",
+	"02 Jan 2006 15:04:05 -0700",
+}
+
+// archivedTime parses a code's archived timestamp, returning the zero time when
+// it is missing or in an unknown format.
+func archivedTime(s string) time.Time {
+	s = strings.TrimSpace(s)
+	for _, layout := range archivedLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// newestFirst orders codes by archived time, newest first. The sort is stable and
+// codes without a parseable timestamp go last, keeping their list order.
+func newestFirst(codes []ShiftCode) []ShiftCode {
+	slices.SortStableFunc(codes, func(a, b ShiftCode) int {
+		return archivedTime(b.Archived).Compare(archivedTime(a.Archived))
+	})
+	return codes
 }
 
 // ServiceMatches reports whether a service value should be redeemed given the

@@ -6,9 +6,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // v1 (orcicorn) fixture: top-level array, [0].codes, no "expired" field.
@@ -169,5 +171,52 @@ func TestResolveRedemptionClosesFinalBodyOnRedirectExhaustion(t *testing.T) {
 		t.Errorf("expected every dialed connection to be closed (dialed=%d, closed=%d); "+
 			"a shortfall means the final redirect response's body leaked its connection",
 			dialed, got)
+	}
+}
+
+func TestArchivedTime(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string // RFC3339 in UTC; "" means the zero time
+	}{
+		{"2026-10-23 14:43:49.659664+00:00", "2026-10-23T14:43:49Z"}, // v2
+		{"2025-09-24 22:13:49+00:00", "2025-09-24T22:13:49Z"},        // v2 without fraction
+		{"14 Apr 2023 19:58:00 -0400", "2023-04-14T23:58:00Z"},       // v1
+		{"  14 Apr 2023 19:58:00 -0400 ", "2023-04-14T23:58:00Z"},    // surrounding space
+		{"", ""},
+		{"Unknown", ""},
+		{"Oct 30, 2026", ""},
+	}
+	for _, c := range cases {
+		got := archivedTime(c.in)
+		if c.want == "" {
+			if !got.IsZero() {
+				t.Errorf("archivedTime(%q) = %v, want zero", c.in, got)
+			}
+			continue
+		}
+		if s := got.UTC().Truncate(time.Second).Format(time.RFC3339); s != c.want {
+			t.Errorf("archivedTime(%q) = %s, want %s", c.in, s, c.want)
+		}
+	}
+}
+
+func TestNewestFirst(t *testing.T) {
+	in := []ShiftCode{
+		{Code: "NOTS1"},
+		{Code: "OLD", Archived: "2025-01-01 00:00:00+00:00"},
+		{Code: "V1MID", Archived: "01 Jun 2025 00:00:00 +0000"},
+		{Code: "BAD", Archived: "Unknown"},
+		{Code: "NEW", Archived: "2026-10-23 14:43:49.659664+00:00"},
+		{Code: "NOTS2"},
+	}
+	var got []string
+	for _, c := range newestFirst(in) {
+		got = append(got, c.Code)
+	}
+	// Dated codes newest-first; undated ones last in their original order.
+	want := []string{"NEW", "V1MID", "OLD", "NOTS1", "BAD", "NOTS2"}
+	if !slices.Equal(got, want) {
+		t.Errorf("newestFirst order = %v, want %v", got, want)
 	}
 }

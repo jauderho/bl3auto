@@ -864,6 +864,39 @@ func TestPlatformFilterDoesNotComplete(t *testing.T) {
 	}
 }
 
+// TestDoShiftQueriesNewestFirst: codes are queried in descending archived order
+// regardless of their position in the source list.
+func TestDoShiftQueriesNewestFirst(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-newest-first"
+	useTempCache(t)
+	listJSON := `[{"meta":{},"codes":[` +
+		`{"code":"MID","archived":"2026-05-01 00:00:00+00:00"},` +
+		`{"code":"OLD","archived":"2025-01-01 00:00:00+00:00"},` +
+		`{"code":"NEW","archived":"2026-10-01 00:00:00+00:00"}]}]`
+	var order []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.json":
+			_, _ = io.WriteString(w, listJSON)
+		case "/code_redemptions/new":
+			_, _ = io.WriteString(w, `<meta name="csrf-token" content="t">`)
+		case "/entitlement_offer_codes":
+			order = append(order, r.URL.Query().Get("code"))
+			_, _ = io.WriteString(w, `<div class="alert">This code is not available for your account</div>`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+	if got, want := strings.Join(order, ","), "NEW,MID,OLD"; got != want {
+		t.Errorf("query order = %s, want %s", got, want)
+	}
+}
+
 // TestBulkStopsOn302WithoutRampup: the dialed-back default — even without --rampup,
 // a bulk run stops after stopAfter consecutive non-200 responses.
 func TestBulkStopsOn302WithoutRampup(t *testing.T) {
