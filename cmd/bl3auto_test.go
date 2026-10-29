@@ -839,7 +839,8 @@ func TestDoShiftMarksCompleteAndSkipsQuery(t *testing.T) {
 }
 
 // TestPlatformFilterDoesNotComplete: a --platform run leaves other platforms
-// un-redeemed, so the code is not marked complete and is re-queried next run.
+// un-redeemed, so the code is not marked complete; being cached, it is skipped
+// next run unless --refresh re-queries it to redeem the remaining platform.
 func TestPlatformFilterDoesNotComplete(t *testing.T) {
 	shrinkBackoff(t, 5)
 	usernameHash = "unittest-filter-complete"
@@ -857,10 +858,76 @@ func TestPlatformFilterDoesNotComplete(t *testing.T) {
 		t.Errorf("only steam should be redeemed under the filter: %v", cached)
 	}
 
-	// Next run (no filter) must re-query, since epic is still pending.
+	// Next run (no filter, no --refresh): the cached code is skipped without a query.
 	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+	if *queries != 1 {
+		t.Errorf("cached code should be skipped without --refresh, got %d total queries", *queries)
+	}
+
+	// --refresh re-queries it and redeems the still-pending epic.
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{refresh: true}) })
 	if *queries != 2 {
-		t.Errorf("incomplete code should be re-queried, got %d total queries", *queries)
+		t.Errorf("--refresh should re-query the cached code, got %d total queries", *queries)
+	}
+	cached, _, _ = readRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json")
+	if !cached.Contains("ALLCODE", "epic") || !cached.Contains("ALLCODE", completeMarker) {
+		t.Errorf("--refresh should redeem epic and complete the code: %v", cached)
+	}
+}
+
+// TestDoShiftSkipsCachedCodeByDefault: a code already in the cache (here redeemed
+// on one platform only, so not complete) is neither queried nor redeemed again
+// unless --refresh is given.
+func TestDoShiftSkipsCachedCodeByDefault(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-skip-cached"
+	useTempCache(t)
+	if err := writeRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json",
+		bl3.ShiftCodeMap{"OLDCODE": {"steam"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	srv, queries := countingShiftServer(t,
+		`[{"meta":{},"codes":[{"code":"OLDCODE","expired":false},{"code":"NEWCODE","expired":false}]}]`)
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{}) })
+	if *queries != 1 {
+		t.Errorf("only the uncached code should be queried, got %d queries", *queries)
+	}
+	if strings.Contains(out, "OLDCODE") {
+		t.Errorf("cached code should not be attempted:\n%s", out)
+	}
+
+	_ = captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{refresh: true}) })
+	if *queries != 3 {
+		t.Errorf("--refresh should re-query both cached codes, got %d total queries", *queries)
+	}
+}
+
+// TestDoShiftSingleCodeCached: --shift-code for a cached code reports it as
+// already redeemed (no query) and points at --refresh.
+func TestDoShiftSingleCodeCached(t *testing.T) {
+	shrinkBackoff(t, 5)
+	usernameHash = "unittest-single-cached"
+	useTempCache(t)
+	if err := writeRedeemedCache(resolveCacheFolder(), usernameHash+"-shift-codes.json",
+		bl3.ShiftCodeMap{"OLDCODE": {"steam"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	srv, queries := countingShiftServer(t, `[]`)
+	defer srv.Close()
+	c := newDoShiftClient(t, srv.URL)
+
+	out := captureStdout(t, func() { doShift(context.Background(), c, shiftOptions{singleShiftCode: "oldcode"}) })
+	if *queries != 0 {
+		t.Errorf("cached single code should not be queried, got %d queries", *queries)
+	}
+	if !strings.Contains(out, "already in the redeemed-codes cache; use --refresh") {
+		t.Errorf("expected cached-code message, got:\n%s", out)
+	}
+	if strings.Contains(out, "could not be redeemed") {
+		t.Errorf("cached single code should not be reported as unredeemable:\n%s", out)
 	}
 }
 

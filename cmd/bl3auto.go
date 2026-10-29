@@ -22,8 +22,8 @@
 //	    --rampup            Cautious mode for a first run / long gap: pace requests,
 //	                        back off after 5 consecutive non-200s, stop after 20
 //	    --count <n>         Stop and save after n successful redemptions (0 = no limit)
-//	    --refresh           Re-query codes already redeemed on every linked platform
-//	                        (to pick up platforms linked since)
+//	    --refresh           Re-query codes already in the redeemed-codes cache
+//	                        (to pick up platforms linked since, or retry pending ones)
 //	    --migrate           Upgrade the redeemed-codes cache file in place and exit
 //	                        (no login); -e selects the per-account cache
 //	-v, --verbose           Verbose step-level logging to stderr
@@ -222,7 +222,7 @@ type shiftOptions struct {
 	gameSkip        []string // skip these games (substring match)
 	dryrun          bool
 	rampup          bool
-	refresh         bool // re-query codes marked complete (pick up newly-linked platforms)
+	refresh         bool // re-query codes already in the cache (pick up newly-linked platforms)
 	count           int  // stop after this many successful redemptions (0 = no limit)
 }
 
@@ -237,9 +237,9 @@ const cacheVersion = 2
 const expiredMarker = "expired"
 
 // completeMarker is recorded when a code has been redeemed on every platform the
-// SHiFT site offered for it (i.e. every linked platform). Such a code is skipped
-// without a query on later runs to cut request volume; --refresh re-queries it to
-// pick up platforms linked since. Like expiredMarker it is not a real service.
+// SHiFT site offered for it (i.e. every linked platform). Like any cached code it is
+// skipped without a query on later runs; --refresh re-queries it to pick up
+// platforms linked since. Like expiredMarker it is not a real service.
 const completeMarker = "complete"
 
 // markDone records a sentinel marker (expiredMarker/completeMarker) for a code,
@@ -365,7 +365,7 @@ Flags:
                           requests, backs off after 5 consecutive non-200 responses,
                           and stops cleanly after 20 (likely rate-limit/shadowban)
       --count <n>         Stop and save after n successful redemptions (0 = no limit)
-      --refresh           Re-query codes already redeemed on every linked platform
+      --refresh           Re-query codes already in the redeemed-codes cache
                           (use after linking a new platform on your SHiFT account)
       --migrate           Upgrade the redeemed-codes cache file in place to the
                           current version and exit (no login; -e selects the cache)
@@ -673,14 +673,17 @@ codeLoop:
 			break codeLoop
 		}
 
-		// Skip codes we've already fully resolved, without spending a query:
-		// expired (terminal), or redeemed on every linked platform (complete).
-		// --refresh re-queries complete codes to detect newly-linked platforms;
-		// expired codes stay skipped regardless (they can never be redeemed again).
+		// Skip codes already in the cache without spending a query: expired codes
+		// (terminal) always, and any code already redeemed on some platform unless
+		// --refresh re-queries it (to pick up newly-linked or still-pending platforms).
 		if redeemedCodes.Contains(code, expiredMarker) {
 			continue
 		}
-		if !opts.refresh && redeemedCodes.Contains(code, completeMarker) {
+		if !opts.refresh && len(redeemedCodes[code]) > 0 {
+			if opts.singleShiftCode != "" {
+				fmt.Println("The single SHIFT code is already in the redeemed-codes cache; use --refresh to re-check it")
+				redeemedAny = true
+			}
 			continue
 		}
 
@@ -967,7 +970,7 @@ func run() int {
 	flag.BoolVar(&dryrun, "dryrun", false, "Discover and match codes but do not redeem")
 	flag.BoolVar(&rampup, "rampup", false, "Cautious mode for a first run / long gap: pace requests and stop cleanly if throttled")
 	flag.IntVar(&count, "count", 0, "Stop and save after this many successful redemptions (0 = no limit)")
-	flag.BoolVar(&refresh, "refresh", false, "Re-query codes already redeemed on every linked platform (to pick up newly-linked platforms)")
+	flag.BoolVar(&refresh, "refresh", false, "Re-query codes already in the redeemed-codes cache (to pick up newly-linked platforms)")
 	flag.BoolVar(&migrate, "migrate", false, "Upgrade the redeemed-codes cache file in place to the current version and exit (no login)")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose step-level logging to stderr")
 	flag.BoolVar(&verbose, "v", false, "Verbose step-level logging to stderr")
