@@ -1585,3 +1585,21 @@ func TestPipedCredentialsReachLogin(t *testing.T) {
 		t.Errorf("posted password = %q, want %q\n%s", got, "secretpw", out)
 	}
 }
+
+// TestPasswordFromEnvironment: with no -p, BL3_PASSWORD is used (no password
+// prompt); an explicit -p still wins over the variable.
+func TestPasswordFromEnvironment(t *testing.T) {
+	srv, posted := loginCaptureServer(t)
+	out := runCLI(t, srv.URL, "", []string{"BL3_PASSWORD=envpw"}, "-e", "me@example.com")
+	if got := posted(); got != "envpw" {
+		t.Errorf("posted password = %q, want %q\n%s", got, "envpw", out)
+	}
+	if strings.Contains(out, "Enter password") {
+		t.Errorf("should not prompt when BL3_PASSWORD is set:\n%s", out)
+	}
+
+	_ = runCLI(t, srv.URL, "", []string{"BL3_PASSWORD=envpw"}, "-e", "me@example.com", "-p", "flagpw")
+	if got := posted(); got != "flagpw" {
+		t.Errorf("-p should win over BL3_PASSWORD; posted %q", got)
+	}
+}

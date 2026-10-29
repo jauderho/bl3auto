@@ -8,7 +8,7 @@
 // Flags:
 //
 //	-e, --email <email>     SHiFT account email (prompted if omitted)
-//	-p, --password <pw>     SHiFT account password (prompted if omitted)
+//	-p, --password <pw>     SHiFT account password (default: $BL3_PASSWORD, else prompted)
 //	    --shift-code <code> Redeem a single SHiFT code instead of the full list
 //	    --allow-inactive    Attempt to redeem inactive SHiFT codes too
 //	    --v1                Force the original orcicorn code source
@@ -348,7 +348,8 @@ Usage:
 
 Flags:
   -e, --email <email>     SHiFT account email (prompted if omitted)
-  -p, --password <pw>     SHiFT account password (prompted if omitted)
+  -p, --password <pw>     SHiFT account password (default: $BL3_PASSWORD, else prompted;
+                          prefer the variable: -p is visible in the process list)
       --shift-code <code> Redeem a single SHiFT code instead of the full list
       --allow-inactive    Also attempt codes flagged as expired/inactive (v2 source)
       --v1                Force the original orcicorn code source
@@ -1024,6 +1025,11 @@ func run() int {
 		return 0
 	}
 
+	// Prefer the environment over -p: command-line arguments are visible to every
+	// user on the host (ps), environment variables are not.
+	if password == "" {
+		password = os.Getenv("BL3_PASSWORD")
+	}
 	if password == "" {
 		fmt.Print("Enter password        : ")
 		if term.IsTerminal(int(os.Stdin.Fd())) {
