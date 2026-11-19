@@ -3,7 +3,7 @@ module github.com/jauderho/bl3auto
 go 1.27.3
 
 require (
-	github.com/PuerkitoBio/goquery v1.13.0
+	github.com/PuerkitoBio/goquery v1.14.0
 	golang.org/x/term v0.48.0
 )
 
